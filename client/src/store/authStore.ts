@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { AuthUser } from '@dialyflow/shared';
 
 interface AuthState {
@@ -10,27 +9,20 @@ interface AuthState {
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      token: localStorage.getItem('token'),
-      setUser: (user) => set({ user }),
-      setToken: (token) => {
-        if (token) {
-          localStorage.setItem('token', token);
-        } else {
-          localStorage.removeItem('token');
-        }
-        set({ token });
-      },
-      logout: () => {
-        localStorage.removeItem('token');
-        set({ user: null, token: null });
-      },
-    }),
-    {
-      name: 'auth-storage',
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  token: localStorage.getItem('token'),
+  setUser: (user) => set({ user }),
+  setToken: (token) => {
+    if (token) {
+      localStorage.setItem('token', token);
+    } else {
+      localStorage.removeItem('token');
     }
-  )
-);
+    set({ token });
+  },
+  logout: () => {
+    localStorage.removeItem('token');
+    set({ user: null, token: null });
+  },
+}));
