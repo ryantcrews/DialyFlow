@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6
+    container_name: dialyflow-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: dialyflow
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - dialyflow-network
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: dialyflow-server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://mongodb:27017/dialyflow
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
+      JWT_EXPIRES_IN: 7d
+      CORS_ORIGIN: http://localhost:3000
+      TWO_FACTOR_ISSUER: DialyFlow
+      ADMIN_EMAIL: admin@dialyflow.com
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!@#}
+    depends_on:
+      - mongodb
+    networks:
+      - dialyflow-network
+    volumes:
+      - ./server/logs:/app/logs
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: dialyflow-client
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+    networks:
+      - dialyflow-network
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  dialyflow-network:
+    driver: bridge
