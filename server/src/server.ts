@@ -7,6 +7,7 @@ import { config } from './config/app.config';
 import { connectDatabase } from './utils/database';
 import { logger } from './utils/logger';
 import { errorMiddleware } from './middleware/error.middleware';
+import { csrfProtection } from './middleware/csrf.middleware';
 import routes from './routes';
 
 const app = express();
@@ -30,6 +31,9 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+
+// CSRF protection
+app.use(csrfProtection);
 
 // Logging middleware
 app.use((req, _res, next) => {

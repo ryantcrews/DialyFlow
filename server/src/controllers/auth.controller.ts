@@ -4,6 +4,7 @@ import { authService } from '../services/auth.service';
 import { twoFactorService } from '../services/twoFactor.service';
 import { User } from '../models/User.model';
 import { logger } from '../utils/logger';
+import { secureCookieOptions } from '../middleware/csrf.middleware';
 
 export class AuthController {
   async register(req: AuthRequest, res: Response, next: NextFunction) {
@@ -30,11 +31,7 @@ export class AuthController {
 
       const token = authService.generateToken(user._id.toString());
 
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
+      res.cookie('token', token, secureCookieOptions);
 
       res.status(201).json({
         success: true,
@@ -73,11 +70,7 @@ export class AuthController {
       const token = authService.generateToken(result.user._id);
       await authService.updateLastLogin(result.user._id);
 
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie('token', token, secureCookieOptions);
 
       res.json({
         success: true,
@@ -111,11 +104,7 @@ export class AuthController {
       const authToken = authService.generateToken(userId);
       await authService.updateLastLogin(userId);
 
-      res.cookie('token', authToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie('token', authToken, secureCookieOptions);
 
       const user = await User.findById(userId).select('-password -twoFactorSecret');
 

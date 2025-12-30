@@ -135,7 +135,7 @@ export class VisitController {
 
   async getPatientVisits(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { patientId } = req.params;
+      const { patientId } = req.body; // Changed from params to body for security
 
       const visits = await Visit.find({ patient: patientId })
         .populate('unit')

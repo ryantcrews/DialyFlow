@@ -19,7 +19,7 @@ export const visitService = {
   },
 
   async getPatientVisits(patientId: string): Promise<Visit[]> {
-    const { data } = await api.get(`/visits/patient/${patientId}`);
+    const { data } = await api.post('/visits/patient', { patientId });
     return data.data;
   },
 
