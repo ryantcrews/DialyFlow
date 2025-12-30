@@ -82,14 +82,27 @@ A comprehensive, production-ready web application for managing dialysis patient 
 - **Docker** - Containerization
 - **Docker Compose** - Multi-container orchestration
 
-## 📦 Installation
+## 📦 Installation & Deployment
 
-### Prerequisites
+> **📘 For complete deployment instructions**, see [DEPLOYMENT.md](./DEPLOYMENT.md)
+> 
+> The deployment guide covers:
+> - Step-by-step setup from cloning to production
+> - Local development with TypeScript
+> - Docker deployment
+> - Production server configuration
+> - Database setup and seeding
+> - Environment configuration
+> - Troubleshooting and security checklist
+
+### Quick Start
+
+#### Prerequisites
 - Node.js 18+ and npm
 - MongoDB 6.0+
 - Docker and Docker Compose (optional)
 
-### Local Development Setup
+#### Local Development Setup
 
 1. **Clone the repository**
 ```bash
