@@ -18,7 +18,7 @@ export class AuthService {
   generateToken(userId: string): string {
     return jwt.sign({ userId }, config.jwtSecret, {
       expiresIn: config.jwtExpiresIn,
-    });
+    } as jwt.SignOptions);
   }
 
   async login(email: string, password: string) {

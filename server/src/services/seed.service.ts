@@ -130,7 +130,7 @@ if (require.main === module) {
       mongoose.connection.close();
       process.exit(0);
     })
-    .catch((error) => {
+    .catch((error: any) => {
       logger.error('Seeding failed:', error);
       process.exit(1);
     });

@@ -3,15 +3,15 @@ import { logger } from '../utils/logger';
 
 export const errorMiddleware = (
   error: any,
-  req: Request,
+  _req: Request,
   res: Response,
   _next: NextFunction
 ) => {
   logger.error('Error:', {
     message: error.message,
     stack: error.stack,
-    path: req.path,
-    method: req.method,
+    path: _req.path,
+    method: _req.method,
   });
 
   // Mongoose validation error

@@ -18,7 +18,7 @@ export default function AdminExport() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const { register, handleSubmit, watch } = useForm<ExportForm>({
+  const { register, handleSubmit } = useForm<ExportForm>({
     defaultValues: {
       format: 'excel',
       startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)

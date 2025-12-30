@@ -32,7 +32,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
 // Logging middleware
-app.use((req, res, next) => {
+app.use((req, _res, next) => {
   logger.info(`${req.method} ${req.path}`, {
     ip: req.ip,
     userAgent: req.get('user-agent'),
@@ -41,7 +41,7 @@ app.use((req, res, next) => {
 });
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
@@ -52,7 +52,7 @@ app.use('/api', routes);
 app.use(errorMiddleware);
 
 // 404 handler
-app.use((req, res) => {
+app.use((_req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route not found',
