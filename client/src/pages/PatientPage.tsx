@@ -1,0 +1,639 @@
+import {
+  NOTE_TYPES,
+  PATIENT_STATUSES,
+  SHIFTS,
+  MONTHLY_NOTE_TARGET,
+  WEEKLY_NOTE_TARGET,
+  currentMonthInClinic,
+  type NoteType,
+  type Patient,
+  type PatientSummary,
+  type PatientWithProgress,
+  type Unit,
+  type Visit,
+} from '@dialyrounds/shared';
+import { useEffect, useMemo, useState } from 'react';
+import { ApiClientError } from '../api/client';
+import { mutate, useFetch } from '../hooks/useApi';
+import { useRouter } from '../hooks/useRouter';
+
+export function PatientPage() {
+  const { pathname, searchParams, navigate } = useRouter();
+  const idMatch = pathname.match(/\/patients\/(\d+)/);
+  const id = idMatch?.[1] ?? '';
+  const month = searchParams.get('month') ?? currentMonthInClinic();
+  const unitId = searchParams.get('unit') ?? '';
+  const shift = searchParams.get('shift') ?? '';
+
+  const { data: patientData, reload: reloadPatient } = useFetch<{ patient: Patient }>(
+    id ? `/api/patients/${id}` : null
+  );
+  const { data: summaryData, reload: reloadSummary } = useFetch<{ summary: PatientSummary }>(
+    id ? `/api/patients/${id}/summary?month=${month}` : null
+  );
+  const { data: visitsData, reload: reloadVisits } = useFetch<{ visits: Visit[] }>(
+    id ? `/api/patients/${id}/visits?month=${month}` : null
+  );
+  const { data: unitsData } = useFetch<{ units: Unit[] }>('/api/units');
+
+  const cohortPath =
+    unitId && shift
+      ? `/api/patients?unit=${unitId}&shift=${encodeURIComponent(shift)}&status=active&month=${month}`
+      : null;
+  const { data: cohortData } = useFetch<{ patients: PatientWithProgress[] }>(cohortPath);
+
+  const patient = patientData?.patient;
+  const summary = summaryData?.summary;
+  const visits = visitsData?.visits ?? [];
+  const cohort = cohortData?.patients ?? [];
+  const cohortIndex = cohort.findIndex((p) => String(p.id) === id);
+
+  const [stickyNote, setStickyNote] = useState('');
+  const [status, setStatus] = useState<string>('active');
+  const [reassignUnit, setReassignUnit] = useState('');
+  const [reassignShift, setReassignShift] = useState<string>(SHIFTS[0]);
+  const [visitDate, setVisitDate] = useState(new Date().toISOString().slice(0, 10));
+  const [noteType, setNoteType] = useState<NoteType>('basic');
+  const [seenOnHd, setSeenOnHd] = useState(false);
+  const [cipa, setCipa] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [assessment, setAssessment] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const defaultNoteType = useMemo((): NoteType => {
+    if (!summary) return 'basic';
+    return summary.comprehensiveCount < MONTHLY_NOTE_TARGET ? 'comprehensive' : 'basic';
+  }, [summary]);
+
+  useEffect(() => {
+    if (!patient) return;
+    setStickyNote(patient.stickyNote);
+    setStatus(patient.status);
+    setReassignUnit(String(patient.unitId));
+    setReassignShift(patient.shift);
+  }, [patient]);
+
+  useEffect(() => {
+    setNoteType(defaultNoteType);
+  }, [defaultNoteType, id]);
+
+  const visitMonth = visitDate.slice(0, 7);
+  const monthlyComprehensiveBlocked =
+    visitMonth === month && (summary?.comprehensiveCount ?? 0) >= MONTHLY_NOTE_TARGET;
+
+  useEffect(() => {
+    if (monthlyComprehensiveBlocked && noteType === 'comprehensive') {
+      setNoteType('basic');
+    }
+  }, [monthlyComprehensiveBlocked, noteType]);
+
+  function patientUrl(patientId: number): string {
+    const params = new URLSearchParams({ month });
+    if (unitId) params.set('unit', unitId);
+    if (shift) params.set('shift', shift);
+    return `/patients/${patientId}?${params.toString()}`;
+  }
+
+  function listUrl(msg?: string): string {
+    const params = new URLSearchParams();
+    if (unitId) params.set('unit', unitId);
+    if (shift) params.set('shift', shift);
+    params.set('status', 'active');
+    if (msg) params.set('msg', msg);
+    return `/?${params.toString()}`;
+  }
+
+  function goToPatient(patientId: number) {
+    navigate(patientUrl(patientId));
+  }
+
+  async function saveProfile() {
+    if (!patient) return;
+    setError(null);
+    try {
+      await mutate(`/api/patients/${patient.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ stickyNote }),
+      });
+      await reloadPatient();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : 'Could not save');
+    }
+  }
+
+  async function saveStatus() {
+    if (!patient) return;
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      await mutate(`/api/patients/${patient.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+      if (status !== 'active') {
+        navigate(listUrl('Status updated — patient removed from active list'));
+        return;
+      }
+      await reloadPatient();
+      setActionMessage('Status updated.');
+    } catch (err) {
+      setActionError(err instanceof ApiClientError ? err.message : 'Could not update status');
+    }
+  }
+
+  async function saveAssignment() {
+    if (!patient) return;
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      await mutate(`/api/patients/${patient.id}/assignment`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          unitId: Number(reassignUnit),
+          shift: reassignShift,
+        }),
+      });
+      const params = new URLSearchParams({
+        unit: reassignUnit,
+        shift: reassignShift,
+        status: 'active',
+        msg: 'Patient reassigned',
+      });
+      navigate(`/?${params.toString()}`);
+    } catch (err) {
+      setActionError(err instanceof ApiClientError ? err.message : 'Could not reassign');
+    }
+  }
+
+  async function removePatient() {
+    if (!patient || !window.confirm('Remove this patient from the active list?')) return;
+    await mutate(`/api/patients/${patient.id}`, { method: 'DELETE' });
+    navigate('/');
+  }
+
+  async function submitVisit(andNext: boolean) {
+    if (!patient) return;
+    setError(null);
+    try {
+      await mutate('/api/visits', {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: patient.id,
+          visitDate,
+          noteType,
+          seenOnHd,
+          cipa,
+          notes,
+          assessment: noteType === 'comprehensive' ? assessment : '',
+        }),
+      });
+      setNotes('');
+      setAssessment('');
+      await Promise.all([reloadVisits(), reloadSummary()]);
+      setNoteType(defaultNoteType);
+
+      if (andNext && cohortIndex >= 0 && cohortIndex < cohort.length - 1) {
+        goToPatient(cohort[cohortIndex + 1].id);
+      }
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : 'Could not log visit');
+    }
+  }
+
+  async function logVisit(e: React.FormEvent) {
+    e.preventDefault();
+    await submitVisit(false);
+  }
+
+  if (!patient) {
+    return (
+      <div className="card">
+        <p className="meta">Loading patient…</p>
+      </div>
+    );
+  }
+
+  const notesComplete =
+    (summary?.comprehensiveCount ?? 0) >= MONTHLY_NOTE_TARGET &&
+    (summary?.basicCount ?? 0) >= WEEKLY_NOTE_TARGET;
+
+  return (
+    <div className="stack">
+      <div className="row">
+        <button className="btn" type="button" onClick={() => navigate(listUrl())}>
+          Back to list
+        </button>
+        {cohortIndex >= 0 && (
+          <>
+            <button
+              className="btn"
+              type="button"
+              disabled={cohortIndex <= 0}
+              onClick={() => goToPatient(cohort[cohortIndex - 1].id)}
+            >
+              Previous
+            </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={cohortIndex >= cohort.length - 1}
+              onClick={() => goToPatient(cohort[cohortIndex + 1].id)}
+            >
+              Next patient
+            </button>
+            <span className="meta">
+              {cohortIndex + 1} of {cohort.length}
+            </span>
+          </>
+        )}
+      </div>
+
+      <div className="card stack">
+        <div>
+          <h2 style={{ margin: 0 }}>
+            {patient.lastName}, {patient.firstName}
+          </h2>
+          <p className="meta">DOB {patient.dob}</p>
+        </div>
+
+        <div className={`banner ${notesComplete ? 'badge-success' : 'banner-warning'}`}>
+          <strong>{month}</strong> — Visits logged {summary?.visitLoggedCount ?? 0} · Comprehensive{' '}
+          {summary?.comprehensiveCount ?? 0}/{MONTHLY_NOTE_TARGET} · Basic {summary?.basicCount ?? 0}/
+          {WEEKLY_NOTE_TARGET}
+        </div>
+
+        <div className="field">
+          <label>Sticky note</label>
+          <textarea value={stickyNote} onChange={(e) => setStickyNote(e.target.value)} />
+        </div>
+        <button className="btn btn-primary" type="button" onClick={saveProfile}>
+          Save note
+        </button>
+        {actionMessage && <p className="banner badge-success">{actionMessage}</p>}
+        {actionError && <p className="error-text">{actionError}</p>}
+
+        <div className="row">
+          <div className="field">
+            <label>Status</label>
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              {PATIENT_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button className="btn" type="button" onClick={saveStatus}>
+            Update status
+          </button>
+        </div>
+
+        <div className="row">
+          <div className="field">
+            <label>Reassign unit</label>
+            <select value={reassignUnit} onChange={(e) => setReassignUnit(e.target.value)}>
+              {(unitsData?.units ?? []).map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>Reassign shift</label>
+            <select value={reassignShift} onChange={(e) => setReassignShift(e.target.value)}>
+              {SHIFTS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button className="btn" type="button" onClick={saveAssignment}>
+            Reassign
+          </button>
+        </div>
+
+        <button className="btn btn-danger" type="button" onClick={removePatient}>
+          Remove patient
+        </button>
+      </div>
+
+      <div className="card stack">
+        <h3 style={{ margin: 0 }}>Save note</h3>
+        <form className="stack" onSubmit={logVisit}>
+          <div className="field">
+            <label>Visit date</label>
+            <input type="date" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Note type</label>
+            <select
+              value={noteType}
+              onChange={(e) => setNoteType(e.target.value as NoteType)}
+            >
+              {NOTE_TYPES.map((t) => (
+                <option
+                  key={t}
+                  value={t}
+                  disabled={t === 'comprehensive' && monthlyComprehensiveBlocked}
+                >
+                  {t === 'comprehensive' ? 'Comprehensive (monthly)' : 'Basic (weekly)'}
+                </option>
+              ))}
+            </select>
+            {monthlyComprehensiveBlocked && (
+              <p className="meta">
+                Monthly comprehensive note already submitted for {month}. Another can be added on
+                the 1st of next month.
+              </p>
+            )}
+          </div>
+          <Toggle label="Seen on HD" checked={seenOnHd} onChange={setSeenOnHd} />
+          <Toggle label="CIPA" checked={cipa} onChange={setCipa} />
+          {noteType === 'comprehensive' && (
+            <div className="field">
+              <label>Comprehensive assessment</label>
+              <textarea
+                value={assessment}
+                onChange={(e) => setAssessment(e.target.value)}
+                placeholder="Full monthly assessment…"
+              />
+            </div>
+          )}
+          <div className="field">
+            <label>Notes</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          {error && <p className="error-text">{error}</p>}
+          <div className="row">
+            <button className="btn btn-primary" type="submit">
+              Save note
+            </button>
+            {cohortIndex >= 0 && (
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => void submitVisit(true)}
+              >
+                Save note &amp; next patient
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+
+      <div className="card stack">
+        <h3 style={{ margin: 0 }}>Visit history ({month})</h3>
+        {visits.length === 0 ? (
+          <p className="meta">No visits logged this month.</p>
+        ) : (
+          <div className="visit-history-list">
+            {visits.map((visit) => (
+              <VisitHistoryItem
+                key={visit.id}
+                visit={visit}
+                month={month}
+                monthlyComprehensiveTaken={
+                  (summary?.comprehensiveCount ?? 0) >= MONTHLY_NOTE_TARGET
+                }
+                onSaved={async () => {
+                  await Promise.all([reloadVisits(), reloadSummary()]);
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function noteTypeLabel(type: NoteType): string {
+  return type === 'comprehensive' ? 'Comprehensive' : 'Basic';
+}
+
+function visitSummary(visit: Visit): string {
+  return `${noteTypeLabel(visit.noteType)} · HD: ${visit.seenOnHd ? 'Y' : 'N'} · CIPA: ${visit.cipa ? 'Y' : 'N'}`;
+}
+
+function formatTimestamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString();
+}
+
+function yesNo(value: boolean): string {
+  return value ? 'Yes' : 'No';
+}
+
+function VisitHistoryItem({
+  visit,
+  month,
+  monthlyComprehensiveTaken,
+  onSaved,
+}: {
+  visit: Visit;
+  month: string;
+  monthlyComprehensiveTaken: boolean;
+  onSaved: () => Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [noteType, setNoteType] = useState(visit.noteType);
+  const [seenOnHd, setSeenOnHd] = useState(visit.seenOnHd);
+  const [cipa, setCipa] = useState(visit.cipa);
+  const [notes, setNotes] = useState(visit.notes);
+  const [assessment, setAssessment] = useState(visit.assessment);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const comprehensiveBlocked =
+    visit.noteType !== 'comprehensive' &&
+    visit.visitDate.slice(0, 7) === month &&
+    monthlyComprehensiveTaken;
+
+  useEffect(() => {
+    setNoteType(visit.noteType);
+    setSeenOnHd(visit.seenOnHd);
+    setCipa(visit.cipa);
+    setNotes(visit.notes);
+    setAssessment(visit.assessment);
+  }, [visit]);
+
+  function resetEditFields() {
+    setNoteType(visit.noteType);
+    setSeenOnHd(visit.seenOnHd);
+    setCipa(visit.cipa);
+    setNotes(visit.notes);
+    setAssessment(visit.assessment);
+    setError(null);
+  }
+
+  function toggleExpanded() {
+    setExpanded((value) => !value);
+    setEditing(false);
+    resetEditFields();
+  }
+
+  function startEditing(e: React.MouseEvent) {
+    e.stopPropagation();
+    setExpanded(true);
+    setEditing(true);
+    resetEditFields();
+  }
+
+  function cancelEditing(e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditing(false);
+    resetEditFields();
+  }
+
+  async function saveVisit(e: React.FormEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSaving(true);
+    setError(null);
+    try {
+      await mutate(`/api/visits/${visit.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          noteType,
+          seenOnHd,
+          cipa,
+          notes,
+          assessment: noteType === 'comprehensive' ? assessment : '',
+        }),
+      });
+      setEditing(false);
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : 'Could not save visit');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className={`visit-history-item${expanded ? ' visit-history-item--expanded' : ''}`}>
+      <button
+        type="button"
+        className="visit-history-header"
+        onClick={toggleExpanded}
+        aria-expanded={expanded}
+      >
+        <div className="visit-history-header-main">
+          <strong>{visit.visitDate}</strong>
+          <div className="meta">{visitSummary(visit)}</div>
+        </div>
+        <span className="visit-history-caret" aria-hidden="true">
+          {expanded ? '▾' : '▸'}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="visit-history-detail">
+          {editing ? (
+            <form className="stack" onSubmit={saveVisit}>
+              <div className="field">
+                <label>Note type</label>
+                <select
+                  value={noteType}
+                  onChange={(e) => setNoteType(e.target.value as NoteType)}
+                >
+                  {NOTE_TYPES.map((t) => (
+                    <option
+                      key={t}
+                      value={t}
+                      disabled={t === 'comprehensive' && comprehensiveBlocked}
+                    >
+                      {noteTypeLabel(t)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Toggle label="Seen on HD" checked={seenOnHd} onChange={setSeenOnHd} />
+              <Toggle label="CIPA" checked={cipa} onChange={setCipa} />
+              {noteType === 'comprehensive' && (
+                <div className="field">
+                  <label>Assessment</label>
+                  <textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} />
+                </div>
+              )}
+              <div className="field">
+                <label>Notes</label>
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+              </div>
+              {error && <p className="error-text">{error}</p>}
+              <div className="row">
+                <button className="btn btn-primary" type="submit" disabled={saving}>
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                <button className="btn" type="button" onClick={cancelEditing} disabled={saving}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <dl className="visit-detail-grid">
+                <div>
+                  <dt>Note type</dt>
+                  <dd>{noteTypeLabel(visit.noteType)}</dd>
+                </div>
+                <div>
+                  <dt>Seen on HD</dt>
+                  <dd>{yesNo(visit.seenOnHd)}</dd>
+                </div>
+                <div>
+                  <dt>CIPA</dt>
+                  <dd>{yesNo(visit.cipa)}</dd>
+                </div>
+              </dl>
+              {visit.noteType === 'comprehensive' && (
+                <div className="visit-detail-notes">
+                  <strong>Assessment</strong>
+                  {visit.assessment ? (
+                    <p>{visit.assessment}</p>
+                  ) : (
+                    <p className="meta">No assessment recorded.</p>
+                  )}
+                </div>
+              )}
+              <div className="visit-detail-notes">
+                <strong>Notes</strong>
+                {visit.notes ? <p>{visit.notes}</p> : <p className="meta">No notes recorded.</p>}
+              </div>
+              <div className="visit-detail-meta meta">
+                <div>Recorded: {formatTimestamp(visit.createdAt)}</div>
+                <div>Last updated: {formatTimestamp(visit.updatedAt)}</div>
+              </div>
+              <button className="btn" type="button" onClick={startEditing}>
+                Edit
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Toggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="toggle-row">
+      <span>{label}</span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
+}

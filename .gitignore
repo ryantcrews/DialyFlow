@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+*.local
+server/scripts/seed-mock-data.sql
+.DS_Store
+.env
+.env.*

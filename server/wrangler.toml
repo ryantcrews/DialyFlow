@@ -1,0 +1,17 @@
+name = "dialyrounds"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[assets]
+directory = "../client/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dialyrounds"
+database_id = "local-dev-placeholder"
+migrations_dir = "migrations"
+
+[vars]
+ENVIRONMENT = "development"
