@@ -7,6 +7,14 @@ export const WEEKLY_NOTE_TARGET = 3;
 export const SHIFTS = ['MWF AM', 'MWF PM', 'TTS AM', 'TTS PM'] as const;
 export type Shift = (typeof SHIFTS)[number];
 
+export const VISIT_MODES = ['telemed', 'in_person'] as const;
+export type VisitMode = (typeof VISIT_MODES)[number];
+
+export const VISIT_MODE_LABELS: Record<VisitMode, string> = {
+  telemed: 'Telemed',
+  in_person: 'In person',
+};
+
 export const PATIENT_STATUSES = [
   'active',
   'hospitalized',

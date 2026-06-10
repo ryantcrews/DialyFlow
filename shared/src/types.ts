@@ -1,4 +1,4 @@
-import type { NoteType, PatientStatus, Shift, UserRole } from './constants.js';
+import type { NoteType, PatientStatus, Shift, UserRole, VisitMode } from './constants.js';
 
 export interface Unit {
   id: number;
@@ -49,6 +49,9 @@ export interface Visit {
   notes: string;
   assessment: string;
   visitLogged: boolean;
+  attestedAt: string | null;
+  attestedBy: number | null;
+  attestedByName?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -63,6 +66,7 @@ export interface PatientSummary {
   basicCount: number;
   monthlyTarget: number;
   weeklyTarget: number;
+  pendingSignOffCount: number;
 }
 
 export interface PatientWithProgress extends Patient {
@@ -73,6 +77,7 @@ export interface PatientWithProgress extends Patient {
   lastNoteType: NoteType | null;
   monthlyTarget: number;
   weeklyTarget: number;
+  unattestedVisitCount: number;
 }
 
 export interface ComplianceRow {
@@ -84,6 +89,80 @@ export interface ComplianceRow {
   monthlyNoteDone: boolean;
   weeklyVisitCount: number;
   missingMonthlyNote: boolean;
+  unattestedVisitCount: number;
+  attestedVisitCount: number;
+}
+
+export interface AttestVisitRow {
+  visitId: number;
+  visitDate: string;
+  noteType: NoteType;
+  patientId: number;
+  firstName: string;
+  lastName: string;
+  authorName: string;
+  attestedAt: string | null;
+  attestedByName: string | null;
+  seenOnHd: boolean;
+  cipa: boolean;
+  notes: string;
+  assessment: string;
+}
+
+export interface AttestQueueItem {
+  unitId: number;
+  unitName: string;
+  shift: Shift;
+  visitDate: string;
+  pendingCount: number;
+  totalCount: number;
+  visitMode: VisitMode | null;
+}
+
+export interface AttestSession {
+  unitId: number;
+  unitName: string;
+  shift: Shift;
+  visitDate: string;
+  visitMode: VisitMode | null;
+  pendingCount: number;
+  totalCount: number;
+  visits: AttestVisitRow[];
+}
+
+export interface AttestShiftBucket {
+  unitId: number;
+  unitName: string;
+  shift: Shift;
+  visitDate: string;
+  visitMode: VisitMode | null;
+  pendingCount: number;
+  totalCount: number;
+  visits: AttestVisitRow[];
+}
+
+export interface AttestDayUnitGroup {
+  unitId: number;
+  unitName: string;
+  shifts: AttestShiftBucket[];
+}
+
+export interface AttestDayBoard {
+  date: string;
+  pendingCount: number;
+  totalCount: number;
+  units: AttestDayUnitGroup[];
+}
+
+export interface UpdateAttestSessionRequest {
+  unitId: number;
+  shift: Shift;
+  visitDate: string;
+  visitMode: VisitMode;
+}
+
+export interface BatchAttestRequest {
+  visitIds: number[];
 }
 
 export interface ApiError {

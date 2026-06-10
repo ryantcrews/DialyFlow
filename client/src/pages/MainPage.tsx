@@ -130,10 +130,14 @@ export function MainPage() {
   const remainingCount = patients.length - completeCount;
   const unitColor = unitId ? unitAccentColor(Number(unitId)) : undefined;
 
-  function openPatient(patientId: number) {
-    navigate(
-      `/patients/${patientId}?month=${month}&unit=${unitId}&shift=${encodeURIComponent(shift)}`
-    );
+  function openPatient(patientId: number, rounds = false) {
+    const params = new URLSearchParams({
+      month,
+      unit: unitId,
+      shift,
+    });
+    if (rounds) params.set('rounds', '1');
+    navigate(`/patients/${patientId}?${params.toString()}`);
   }
 
   const handlePatientKeyDown = (patientId: number) => (e: React.KeyboardEvent) => {
@@ -145,7 +149,7 @@ export function MainPage() {
 
   function startRounds() {
     const first = patients.find((p) => !isNotesComplete(p)) ?? patients[0];
-    if (first) openPatient(first.id);
+    if (first) openPatient(first.id, true);
   }
 
   async function addPatient(e: React.FormEvent) {
@@ -345,6 +349,11 @@ export function MainPage() {
                         {complete && <span className="badge badge-success">Complete</span>}
                         {!complete && patient.comprehensiveCount < MONTHLY_NOTE_TARGET && (
                           <span className="badge badge-warning">Needs Comp</span>
+                        )}
+                        {patient.unattestedVisitCount > 0 && (
+                          <span className="badge badge-warning">
+                            {patient.unattestedVisitCount} sign-off
+                          </span>
                         )}
                         {patient.status !== 'active' && (
                           <span className="badge">{patient.status}</span>

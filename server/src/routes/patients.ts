@@ -66,6 +66,7 @@ export const listPatients: RouteHandler = async (_request, ctx) => {
                         SUM(CASE WHEN note_type = 'comprehensive' THEN 1 ELSE 0 END) as comprehensive_count,
                         SUM(CASE WHEN note_type = 'basic' THEN 1 ELSE 0 END) as basic_count,
                         COUNT(*) as visit_logged_count,
+                        SUM(CASE WHEN attested_at IS NULL AND visit_logged = 1 THEN 1 ELSE 0 END) as unattested_count,
                         MAX(visit_date) as last_visit_date
                  FROM visits
                  WHERE visit_date >= ? AND visit_date <= ?
@@ -91,6 +92,7 @@ export const listPatients: RouteHandler = async (_request, ctx) => {
       comprehensive_count: number;
       basic_count: number;
       visit_logged_count: number;
+      unattested_count: number;
       last_visit_date: string | null;
       last_note_type: NoteType | null;
     }
@@ -107,6 +109,7 @@ export const listPatients: RouteHandler = async (_request, ctx) => {
       lastNoteType: row.last_note_type,
       monthlyTarget: MONTHLY_NOTE_TARGET,
       weeklyTarget: WEEKLY_NOTE_TARGET,
+      unattestedVisitCount: row.unattested_count,
     })),
   });
 };
@@ -263,16 +266,23 @@ export const getPatientSummary: RouteHandler = async (_request, ctx) => {
     `SELECT
        COUNT(*) as visit_logged_count,
        SUM(CASE WHEN note_type = 'comprehensive' THEN 1 ELSE 0 END) as comprehensive_count,
-       SUM(CASE WHEN note_type = 'basic' THEN 1 ELSE 0 END) as basic_count
+       SUM(CASE WHEN note_type = 'basic' THEN 1 ELSE 0 END) as basic_count,
+       SUM(CASE WHEN attested_at IS NULL AND visit_logged = 1 THEN 1 ELSE 0 END) as pending_sign_off_count
      FROM visits
      WHERE patient_id = ? AND visit_date >= ? AND visit_date <= ?`
   )
     .bind(id, start, end)
-    .first<{ visit_logged_count: number; comprehensive_count: number; basic_count: number }>();
+    .first<{
+      visit_logged_count: number;
+      comprehensive_count: number;
+      basic_count: number;
+      pending_sign_off_count: number;
+    }>();
 
   const comprehensiveCount = counts?.comprehensive_count ?? 0;
   const basicCount = counts?.basic_count ?? 0;
   const visitLoggedCount = counts?.visit_logged_count ?? 0;
+  const pendingSignOffCount = counts?.pending_sign_off_count ?? 0;
 
   return json({
     summary: {
@@ -285,6 +295,7 @@ export const getPatientSummary: RouteHandler = async (_request, ctx) => {
       basicCount,
       monthlyTarget: MONTHLY_NOTE_TARGET,
       weeklyTarget: WEEKLY_NOTE_TARGET,
+      pendingSignOffCount,
     },
   });
 };

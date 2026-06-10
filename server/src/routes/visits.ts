@@ -54,8 +54,11 @@ interface VisitRow {
   notes: string;
   assessment: string;
   visit_logged: number;
+  attested_at: string | null;
+  attested_by: number | null;
   created_at: string;
   updated_at: string;
+  attested_by_name?: string | null;
 }
 
 function mapVisit(row: VisitRow): Visit {
@@ -71,6 +74,9 @@ function mapVisit(row: VisitRow): Visit {
     notes: row.notes,
     assessment: row.assessment,
     visitLogged: row.visit_logged === 1,
+    attestedAt: row.attested_at,
+    attestedBy: row.attested_by,
+    attestedByName: row.attested_by_name ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -87,9 +93,13 @@ export const listVisits: RouteHandler = async (_request, ctx) => {
 
   const { start, end } = monthDateRange(monthCheck.value);
   const { results } = await ctx.env.DB.prepare(
-    `SELECT id, patient_id, user_id, visit_date, note_type, seen_on_hd, monthly_note, cipa, notes, assessment, visit_logged, created_at, updated_at
-     FROM visits WHERE patient_id = ? AND visit_date >= ? AND visit_date <= ?
-     ORDER BY created_at DESC, id DESC`
+    `SELECT v.id, v.patient_id, v.user_id, v.visit_date, v.note_type, v.seen_on_hd, v.monthly_note,
+            v.cipa, v.notes, v.assessment, v.visit_logged, v.attested_at, v.attested_by,
+            v.created_at, v.updated_at, attester.name as attested_by_name
+     FROM visits v
+     LEFT JOIN users attester ON attester.id = v.attested_by
+     WHERE v.patient_id = ? AND v.visit_date >= ? AND v.visit_date <= ?
+     ORDER BY v.created_at DESC, v.id DESC`
   )
     .bind(patientId, start, end)
     .all<VisitRow>();

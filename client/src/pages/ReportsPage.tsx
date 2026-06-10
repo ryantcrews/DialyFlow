@@ -1,7 +1,10 @@
 import { SHIFTS, currentMonthInClinic, type ComplianceRow, type Unit } from '@dialyrounds/shared';
 import { useState } from 'react';
 import { downloadCsv } from '../api/client';
+import { ContextBar } from '../components/ContextBar';
+import { MonthPicker } from '../components/DateRangePicker';
 import { PatientListSkeleton } from '../components/Skeleton';
+import { StatusChip } from '../components/StatusChip';
 import { useFetch } from '../hooks/useApi';
 import { useRouter } from '../hooks/useRouter';
 
@@ -32,41 +35,38 @@ export function ReportsPage() {
   }
 
   const rows = data?.rows ?? [];
+  const missingMonthly = rows.filter((r) => r.missingMonthlyNote).length;
+  const unattested = rows.reduce((sum, r) => sum + r.unattestedVisitCount, 0);
+  const attested = rows.reduce((sum, r) => sum + r.attestedVisitCount, 0);
+  const complete = rows.filter((r) => !r.missingMonthlyNote && r.weeklyVisitCount >= 3).length;
+
+  function attestationLabel(row: ComplianceRow): string {
+    if (row.weeklyVisitCount === 0) return '—';
+    if (row.unattestedVisitCount === 0) return 'Complete';
+    return `${row.unattestedVisitCount} pending`;
+  }
 
   return (
     <div className="stack">
-      <div className="card stack">
-        <div className="row">
-          <div className="field">
-            <label>Unit</label>
-            <select value={unitId} onChange={(e) => setUnitId(e.target.value)}>
-              <option value="">Select unit</option>
-              {(unitsData?.units ?? []).map((unit) => (
-                <option key={unit.id} value={unit.id}>
-                  {unit.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Shift</label>
-            <select value={shift} onChange={(e) => setShift(e.target.value)}>
-              {SHIFTS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Month</label>
-            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-          </div>
-          <button className="btn btn-primary" type="button" disabled={!unitId} onClick={exportReport}>
+      <ContextBar
+        units={unitsData?.units ?? []}
+        unitId={unitId}
+        onUnitChange={setUnitId}
+        shift={shift}
+        onShiftChange={setShift}
+      >
+        <div className="context-bar-report-tools row">
+          <MonthPicker value={month} onChange={setMonth} />
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={!unitId}
+            onClick={exportReport}
+          >
             Export CSV
           </button>
         </div>
-      </div>
+      </ContextBar>
 
       <div className="card">
         {!unitId ? (
@@ -83,6 +83,13 @@ export function ReportsPage() {
           </div>
         ) : (
           <>
+            <p className="kpi-strip">
+              <StatusChip variant="warning" label={`${missingMonthly} missing monthly`} />
+              <StatusChip variant="pending" label={`${unattested} pending attest`} />
+              <StatusChip variant="success" label={`${attested} attested`} />
+              <StatusChip variant="success" label={`${complete} complete`} />
+            </p>
+
             <div className="report-cards report-cards-mobile">
               {rows.map((row) => (
                 <button
@@ -98,7 +105,16 @@ export function ReportsPage() {
                   <span className="meta">
                     Monthly note: {row.monthlyNoteDone ? 'Yes' : 'No'} · Visits: {row.weeklyVisitCount}
                   </span>
-                  {row.missingMonthlyNote && <span className="badge badge-warning">Missing monthly</span>}
+                  {row.unattestedVisitCount > 0 && (
+                    <StatusChip
+                      variant="pending"
+                      label={`${row.unattestedVisitCount} pending attest`}
+                    />
+                  )}
+                  {row.weeklyVisitCount > 0 && row.unattestedVisitCount === 0 && (
+                    <StatusChip variant="success" label="Attestation complete" />
+                  )}
+                  {row.missingMonthlyNote && <StatusChip variant="warning" label="Missing monthly" />}
                 </button>
               ))}
             </div>
@@ -111,6 +127,7 @@ export function ReportsPage() {
                     <th>DOB</th>
                     <th>Monthly note</th>
                     <th>Visits</th>
+                    <th>Attestation</th>
                     <th>Missing monthly</th>
                   </tr>
                 </thead>
@@ -130,6 +147,7 @@ export function ReportsPage() {
                       <td>{row.dob}</td>
                       <td>{row.monthlyNoteDone ? 'Yes' : 'No'}</td>
                       <td>{row.weeklyVisitCount}</td>
+                      <td>{attestationLabel(row)}</td>
                       <td>{row.missingMonthlyNote ? 'Yes' : 'No'}</td>
                     </tr>
                   ))}

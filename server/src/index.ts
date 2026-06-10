@@ -13,6 +13,15 @@ import {
   updateUser,
 } from './routes/auth.js';
 import {
+  batchAttest,
+  attestVisit,
+  getAttestDay,
+  getAttestSession,
+  listAttestQueue,
+  listAttestVisits,
+  updateAttestSession,
+} from './routes/attest.js';
+import {
   complianceReport,
   complianceReportExport,
   exportPatients,
@@ -62,6 +71,14 @@ export function createRouter(): Router {
 
   router.on('POST', '/api/visits', createVisit, auth);
   router.on('PATCH', '/api/visits/:id', updateVisit, auth);
+
+  router.on('GET', '/api/attest/day', getAttestDay, auth);
+  router.on('GET', '/api/attest/queue', listAttestQueue, auth);
+  router.on('GET', '/api/attest/session', getAttestSession, auth);
+  router.on('PATCH', '/api/attest/session', updateAttestSession, auth);
+  router.on('GET', '/api/attest', listAttestVisits, auth);
+  router.on('POST', '/api/attest/batch', batchAttest, auth);
+  router.on('POST', '/api/attest/:id', attestVisit, auth);
 
   router.on('POST', '/api/import', importPatients, auth);
   router.on('GET', '/api/export', exportPatients, auth);

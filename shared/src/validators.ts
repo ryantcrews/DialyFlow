@@ -3,9 +3,11 @@ import {
   PATIENT_STATUSES,
   SHIFTS,
   USER_ROLES,
+  VISIT_MODES,
 } from './constants.js';
 import type {
   AssignmentRequest,
+  BatchAttestRequest,
   ChangePasswordRequest,
   CreatePatientRequest,
   CreateUserRequest,
@@ -13,6 +15,7 @@ import type {
   ImportRequest,
   LoginRequest,
   StatusRequest,
+  UpdateAttestSessionRequest,
   UpdatePatientRequest,
   UpdateVisitRequest,
 } from './types.js';
@@ -250,6 +253,102 @@ export function validateMonthParam(value: string | null): ValidationResult<strin
   if (!value) return fail(['Month parameter is required (YYYY-MM)']);
   if (!isMonthString(value)) return fail(['Month must be YYYY-MM']);
   return ok(value);
+}
+
+export function validateDateParam(value: string | null, label = 'Date'): ValidationResult<string> {
+  if (!value) return fail([`${label} parameter is required (YYYY-MM-DD)`]);
+  if (!isDateString(value)) return fail([`${label} must be YYYY-MM-DD`]);
+  return ok(value);
+}
+
+export function validateAttestQuery(params: {
+  unit: string | null;
+  shift: string | null;
+  start: string | null;
+  end: string | null;
+}): ValidationResult<{ unitId: number; shift: (typeof SHIFTS)[number]; start: string; end: string }> {
+  const errors: string[] = [];
+  const unitId = params.unit ? Number(params.unit) : NaN;
+  if (!Number.isInteger(unitId) || unitId <= 0) errors.push('Valid unit is required');
+  if (!params.shift || !isOneOf(params.shift, SHIFTS)) errors.push('Valid shift is required');
+  const startCheck = validateDateParam(params.start, 'Start date');
+  const endCheck = validateDateParam(params.end, 'End date');
+  if (!startCheck.ok) errors.push(...startCheck.errors);
+  if (!endCheck.ok) errors.push(...endCheck.errors);
+  if (errors.length) return fail(errors);
+  const start = startCheck.ok ? startCheck.value : '';
+  const end = endCheck.ok ? endCheck.value : '';
+  if (start > end) return fail(['Start date must be on or before end date']);
+  return ok({
+    unitId,
+    shift: params.shift as (typeof SHIFTS)[number],
+    start,
+    end,
+  });
+}
+
+export function validateBatchAttest(body: unknown): ValidationResult<BatchAttestRequest> {
+  const obj = parseObject(body);
+  if (!obj) return fail(['Invalid request body']);
+  const raw = obj.visitIds;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return fail(['At least one visit id is required']);
+  }
+  const visitIds: number[] = [];
+  for (const id of raw) {
+    const n = typeof id === 'number' ? id : Number(id);
+    if (!Number.isInteger(n) || n <= 0) return fail(['Invalid visit id in list']);
+    visitIds.push(n);
+  }
+  return ok({ visitIds });
+}
+
+export function validateAttestSessionQuery(params: {
+  unit: string | null;
+  shift: string | null;
+  date: string | null;
+}): ValidationResult<{ unitId: number; shift: (typeof SHIFTS)[number]; visitDate: string }> {
+  const errors: string[] = [];
+  const unitId = params.unit ? Number(params.unit) : NaN;
+  if (!Number.isInteger(unitId) || unitId <= 0) errors.push('Valid unit is required');
+  if (!params.shift || !isOneOf(params.shift, SHIFTS)) errors.push('Valid shift is required');
+  const dateCheck = validateDateParam(params.date, 'Date');
+  if (!dateCheck.ok) errors.push(...dateCheck.errors);
+  if (errors.length) return fail(errors);
+  return ok({
+    unitId,
+    shift: params.shift as (typeof SHIFTS)[number],
+    visitDate: dateCheck.ok ? dateCheck.value : '',
+  });
+}
+
+export function validateAttestDayQuery(
+  date: string | null
+): ValidationResult<{ date: string }> {
+  const dateCheck = validateDateParam(date, 'Date');
+  if (!dateCheck.ok) return dateCheck as ValidationResult<{ date: string }>;
+  return ok({ date: dateCheck.value });
+}
+
+export function validateUpdateAttestSession(
+  body: unknown
+): ValidationResult<UpdateAttestSessionRequest> {
+  const obj = parseObject(body);
+  if (!obj) return fail(['Invalid request body']);
+  const errors: string[] = [];
+  const unitId = typeof obj.unitId === 'number' ? obj.unitId : Number(obj.unitId);
+  if (!Number.isInteger(unitId) || unitId <= 0) errors.push('Valid unit is required');
+  if (!isOneOf(obj.shift, SHIFTS)) errors.push('Valid shift is required');
+  const visitDate = typeof obj.visitDate === 'string' ? obj.visitDate.trim() : '';
+  if (!isDateString(visitDate)) errors.push('Visit date must be YYYY-MM-DD');
+  if (!isOneOf(obj.visitMode, VISIT_MODES)) errors.push('Valid visit mode is required');
+  if (errors.length) return fail(errors);
+  return ok({
+    unitId,
+    shift: obj.shift as (typeof SHIFTS)[number],
+    visitDate,
+    visitMode: obj.visitMode as (typeof VISIT_MODES)[number],
+  });
 }
 
 export function currentMonthInClinic(): string {

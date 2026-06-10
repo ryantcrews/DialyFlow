@@ -12,6 +12,8 @@ import {
 
   currentMonthInClinic,
 
+  isClinicalRole,
+
   type NoteType,
 
   type Patient,
@@ -31,6 +33,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiClientError } from '../api/client';
 
 import { Skeleton } from '../components/Skeleton';
+
+import { FixedActionBar } from '../components/FixedActionBar';
+
+import { StatusChip } from '../components/StatusChip';
 
 import { mutate, useFetch } from '../hooks/useApi';
 
@@ -95,6 +101,8 @@ export function PatientPage() {
   const unitId = searchParams.get('unit') ?? '';
 
   const shift = searchParams.get('shift') ?? '';
+
+  const startRoundsParam = searchParams.get('rounds') === '1';
 
 
 
@@ -210,6 +218,18 @@ export function PatientPage() {
 
   useEffect(() => {
 
+    if (startRoundsParam && user && isClinicalRole(user.role)) {
+
+      setRoundsMode(true);
+
+    }
+
+  }, [startRoundsParam, user]);
+
+
+
+  useEffect(() => {
+
     if (!patient) return;
 
     setStickyNote(patient.stickyNote);
@@ -272,6 +292,12 @@ export function PatientPage() {
 
     return `/patients/${patientId}?${params.toString()}`;
 
+  }
+
+
+
+  function attestUrlForVisit(visitDate: string): string {
+    return `/attest?date=${visitDate}`;
   }
 
 
@@ -654,7 +680,7 @@ export function PatientPage() {
 
 
 
-      <div className="card stack patient-header-card">
+      <div className="card stack patient-header-card patient-sticky-header">
 
         <div>
 
@@ -688,6 +714,29 @@ export function PatientPage() {
 
 
 
+        {(summary?.pendingSignOffCount ?? 0) > 0 && (
+          <div className="banner banner-warning patient-signoff-banner">
+            <div>
+              <strong>
+                {summary!.pendingSignOffCount} visit
+                {summary!.pendingSignOffCount === 1 ? '' : 's'} need sign-off
+              </strong>
+              <p className="meta" style={{ margin: '0.25rem 0 0' }}>
+                Saved notes awaiting physician sign-off for {month}.
+              </p>
+            </div>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => navigate('/attest')}
+            >
+              Go to Batch Attest
+            </button>
+          </div>
+        )}
+
+
+
         {stickyPreview ? (
 
           <button
@@ -714,7 +763,7 @@ export function PatientPage() {
 
         <h3 style={{ margin: 0 }}>Save note</h3>
 
-        <form className="stack" onSubmit={logVisit}>
+        <form id="save-note-form" className="stack" onSubmit={logVisit}>
 
           <div className="field">
 
@@ -830,27 +879,27 @@ export function PatientPage() {
 
           {error && <p className="error-text">{error}</p>}
 
-          <div className="row">
+        </form>
 
-            <button className="btn btn-primary" type="submit">
+        <FixedActionBar>
 
-              Save note
+          <button className="btn btn-primary" type="submit" form="save-note-form">
+
+            Save note
+
+          </button>
+
+          {cohortIndex >= 0 && (
+
+            <button className="btn btn-primary" type="button" onClick={() => void submitVisit(true)}>
+
+              Save note &amp; next patient
 
             </button>
 
-            {cohortIndex >= 0 && (
+          )}
 
-              <button className="btn btn-primary" type="button" onClick={() => void submitVisit(true)}>
-
-                Save note &amp; next patient
-
-              </button>
-
-            )}
-
-          </div>
-
-        </form>
+        </FixedActionBar>
 
       </div>
 
@@ -907,6 +956,8 @@ export function PatientPage() {
                       (summary?.comprehensiveCount ?? 0) >= MONTHLY_NOTE_TARGET
 
                     }
+
+                    onGoToAttest={() => navigate(attestUrlForVisit(visit.visitDate))}
 
                     onSaved={async () => {
 
@@ -969,6 +1020,8 @@ export function PatientPage() {
                   month={month}
 
                   monthlyComprehensiveTaken={(summary?.comprehensiveCount ?? 0) >= MONTHLY_NOTE_TARGET}
+
+                  onGoToAttest={() => navigate(attestUrlForVisit(visit.visitDate))}
 
                   onSaved={async () => {
 
@@ -1194,6 +1247,8 @@ function VisitHistoryItem({
 
   monthlyComprehensiveTaken,
 
+  onGoToAttest,
+
   onSaved,
 
 }: {
@@ -1203,6 +1258,8 @@ function VisitHistoryItem({
   month: string;
 
   monthlyComprehensiveTaken: boolean;
+
+  onGoToAttest: () => void;
 
   onSaved: () => Promise<void>;
 
@@ -1362,7 +1419,9 @@ function VisitHistoryItem({
 
   return (
 
-    <div className={`visit-history-item${expanded ? ' visit-history-item--expanded' : ''}`}>
+    <div
+      className={`visit-history-item${expanded ? ' visit-history-item--expanded' : ''}${!visit.attestedAt && visit.visitLogged ? ' visit-history-item--needs-signoff' : ''}${visit.attestedAt ? ' visit-history-item--signed' : ''}`}
+    >
 
       <button
 
@@ -1380,7 +1439,21 @@ function VisitHistoryItem({
 
           <strong>{visit.visitDate}</strong>
 
-          <div className="meta">{visitSummary(visit)}</div>
+          <div className="meta">
+
+            {visitSummary(visit)}
+
+            {!visit.attestedAt ? (
+              <span className="visit-attest-pending">
+                <StatusChip variant="pending" label="Needs sign-off" />
+              </span>
+            ) : (
+              <span className="visit-attest-pending">
+                <StatusChip variant="success" label="Completed" />
+              </span>
+            )}
+
+          </div>
 
         </div>
 
@@ -1541,6 +1614,16 @@ function VisitHistoryItem({
                 <div>Last updated: {formatTimestamp(visit.updatedAt)}</div>
 
               </div>
+
+              {!visit.attestedAt && (
+
+                <button className="btn" type="button" onClick={onGoToAttest}>
+
+                  Go to Attest
+
+                </button>
+
+              )}
 
               <button className="btn" type="button" onClick={startEditing}>
 
