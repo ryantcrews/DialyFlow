@@ -2,9 +2,11 @@ import { SHIFTS, type Unit } from '@dialyrounds/shared';
 import { useState } from 'react';
 import { ApiClientError, api } from '../api/client';
 import { useFetch } from '../hooks/useApi';
+import { useToast } from '../hooks/useToast';
 import { normalizeDate, parseCsv } from '../utils/csv';
 
 export function ImportPage() {
+  const { showToast } = useToast();
   const { data: unitsData } = useFetch<{ units: Unit[] }>('/api/units');
   const [unitId, setUnitId] = useState('');
   const [shift, setShift] = useState<string>(SHIFTS[0]);
@@ -16,6 +18,8 @@ export function ImportPage() {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const step = result ? 3 : rows.length > 0 ? 2 : 1;
 
   function onFile(file: File) {
     const reader = new FileReader();
@@ -57,7 +61,9 @@ export function ImportPage() {
           rows: payloadRows,
         }),
       });
-      setResult(`Added ${data.added} patients, skipped ${data.skipped} duplicates.`);
+      const message = `Added ${data.added} patients, skipped ${data.skipped} duplicates.`;
+      setResult(message);
+      showToast('Import complete');
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : 'Import failed');
     } finally {
@@ -68,8 +74,18 @@ export function ImportPage() {
   return (
     <div className="stack">
       <div className="card stack">
-        <h2 style={{ margin: 0 }}>Import patients (CSV)</h2>
-        <p className="meta">Save your Excel file as CSV, then upload it here. Existing patients are never updated.</p>
+        <div className="steps" aria-label="Import progress">
+          <span className={`step-pill${step === 1 ? ' step-pill--active' : step > 1 ? ' step-pill--done' : ''}`}>
+            1. Upload
+          </span>
+          <span className={`step-pill${step === 2 ? ' step-pill--active' : step > 2 ? ' step-pill--done' : ''}`}>
+            2. Map columns
+          </span>
+          <span className={`step-pill${step === 3 ? ' step-pill--active step-pill--done' : ''}`}>3. Done</span>
+        </div>
+        <p className="meta">
+          Save your Excel file as CSV, then upload it here. Existing patients are never updated.
+        </p>
         <div className="row">
           <div className="field">
             <label>Target unit</label>
@@ -161,7 +177,7 @@ export function ImportPage() {
           </div>
 
           {error && <p className="error-text">{error}</p>}
-          {result && <p className="meta">{result}</p>}
+          {result && <p className="banner badge-success">{result}</p>}
           <button className="btn btn-primary" type="button" disabled={loading} onClick={onImport}>
             {loading ? 'Importing…' : 'Confirm import'}
           </button>

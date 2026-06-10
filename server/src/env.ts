@@ -1,3 +1,5 @@
+import type { UserRole } from '@dialyrounds/shared';
+
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -8,7 +10,7 @@ export interface AuthUser {
   id: number;
   email: string;
   name: string;
-  role: 'admin' | 'clinician';
+  role: UserRole;
   mustChangePassword: boolean;
 }
 

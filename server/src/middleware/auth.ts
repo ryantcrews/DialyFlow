@@ -1,4 +1,5 @@
 import { LOGIN_LOCKOUT_MS, LOGIN_MAX_ATTEMPTS } from '@dialyrounds/shared';
+import type { UserRole } from '@dialyrounds/shared';
 import type { AuthUser, Middleware, RequestContext } from '../env.js';
 import { hashToken } from '../utils/crypto.js';
 import { clearSessionCookie, error, getSessionToken } from '../utils/response.js';
@@ -11,7 +12,7 @@ interface SessionRow {
   last_seen_at: string;
   email: string;
   name: string;
-  role: 'admin' | 'clinician';
+  role: UserRole;
   must_change_password: number;
   active: number;
 }

@@ -4,7 +4,7 @@ CREATE TABLE users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('admin', 'clinician')),
+  role TEXT NOT NULL CHECK (role IN ('admin', 'physician', 'physician_assistant')),
   name TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
   must_change_password INTEGER NOT NULL DEFAULT 0,

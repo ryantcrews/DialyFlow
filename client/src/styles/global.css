@@ -387,7 +387,47 @@ td {
 .patient-item-accent {
   width: 4px;
   flex-shrink: 0;
+  background: var(--primary);
+}
+
+.patient-item-accent--complete {
   background: var(--accent);
+}
+
+.patient-sticky-callout {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  font-style: italic;
+}
+
+.patient-primary-card {
+  border-color: var(--primary);
+}
+
+.visit-history-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.visit-history-toggle:hover {
+  color: var(--primary);
+}
+
+.badge-warning {
+  background: #fff1e6;
+  color: var(--warning);
 }
 
 .patient-item--rich .patient-item-main {
@@ -416,5 +456,428 @@ td {
 @media (min-width: 768px) {
   .content {
     padding: 1.5rem;
+  }
+}
+
+/* ——— UI polish: shell, toast, skeleton, a11y, dark mode ——— */
+
+.topbar-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.topbar-user {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.75rem;
+}
+
+.nav-active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.page-header {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 0.75rem 1rem 0;
+}
+
+.page-header-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.page-header-sub {
+  margin: 0.25rem 0 0;
+}
+
+.bottom-nav {
+  display: flex;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom, 0));
+  gap: 0.25rem;
+}
+
+.bottom-nav-item {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 0.5rem 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.bottom-nav-item--active {
+  color: var(--primary);
+  background: var(--surface-muted);
+  font-weight: 600;
+}
+
+.topbar-actions--desktop {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .bottom-nav {
+    display: none;
+  }
+
+  .topbar-actions--desktop {
+    display: flex;
+  }
+
+  .content {
+    padding-bottom: 1.5rem;
+  }
+}
+
+.app-shell {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.content {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0));
+}
+
+.toast-stack {
+  position: fixed;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(420px, calc(100% - 2rem));
+  pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .toast-stack {
+    bottom: 1.5rem;
+  }
+}
+
+.toast {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  font-size: 0.875rem;
+  animation: toast-in 0.25s ease;
+}
+
+.toast--success {
+  background: #dcf7ee;
+  color: var(--accent);
+  border: 1px solid #b8ead8;
+}
+
+.toast--error {
+  background: #fee4e2;
+  color: var(--danger);
+  border: 1px solid #fecdca;
+}
+
+.toast--info {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.skeleton-line,
+.skeleton-card {
+  height: 1rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--surface-muted) 25%, #e2e9f1 50%, var(--surface-muted) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease infinite;
+}
+
+.skeleton-card {
+  height: 88px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.progress-summary {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  font-size: 0.875rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 1.5rem 1rem;
+}
+
+.empty-state-title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.empty-state-hint {
+  margin: 0;
+}
+
+.note-suggestion {
+  display: inline-flex;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  background: #fff1e6;
+  color: var(--warning);
+  border: 1px solid #fed7aa;
+}
+
+.note-suggestion--done {
+  background: #dcf7ee;
+  color: var(--accent);
+  border-color: #b8ead8;
+}
+
+.toggle-row--large {
+  padding: 0.75rem 0;
+}
+
+.toggle-row--large input {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.patient-sticky-callout--btn {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border: 1px dashed var(--border);
+  font: inherit;
+  color: inherit;
+}
+
+.patient-sticky-callout--btn:hover {
+  border-color: var(--primary);
+  background: #e6eef6;
+}
+
+.rounds-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  font-size: 0.875rem;
+}
+
+.save-flash {
+  animation: save-flash 0.6s ease;
+}
+
+@keyframes save-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 0 8px rgba(15, 118, 110, 0);
+  }
+}
+
+.steps {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.step-pill {
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+
+.step-pill--active {
+  background: var(--primary);
+  color: white;
+}
+
+.step-pill--done {
+  background: #dcf7ee;
+  color: var(--accent);
+}
+
+.role-badge {
+  display: inline-flex;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.role-badge--admin {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.role-badge--physician {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.role-badge--physician_assistant {
+  background: #cffafe;
+  color: #0e7490;
+}
+
+.report-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.report-cards-mobile {
+  display: flex;
+}
+
+.report-table-desktop {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .report-cards-mobile {
+    display: none;
+  }
+
+  .report-table-desktop {
+    display: block;
+  }
+}
+
+.report-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: left;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.report-card:hover {
+  border-color: var(--primary);
+}
+
+.report-card-name {
+  font-weight: 600;
+  margin: 0;
+}
+
+.btn:focus-visible,
+.patient-item:focus-visible,
+.visit-history-header:focus-visible,
+.visit-history-toggle:focus-visible,
+.bottom-nav-item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.patient-item:focus-visible {
+  border-color: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0f1720;
+    --surface: #1a2634;
+    --surface-muted: #243447;
+    --text: #e8eef4;
+    --text-muted: #94a3b8;
+    --primary: #3d8fd1;
+    --primary-hover: #5aa3db;
+    --accent: #2dd4bf;
+    --border: #334155;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  .field input,
+  .field select,
+  .field textarea {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  .visit-history-header:hover {
+    background: #2a3a4d;
+  }
+
+  .patient-sticky-callout--btn:hover {
+    background: #2a3a4d;
+  }
+
+  .toast--success {
+    background: #134e4a;
+    color: #99f6e4;
+    border-color: #0f766e;
+  }
+
+  .badge-success,
+  .note-badge--done,
+  .note-suggestion--done {
+    background: #134e4a;
+    color: #99f6e4;
+  }
+
+  .banner-warning,
+  .badge-warning,
+  .note-suggestion {
+    background: #431407;
+    color: #fdba74;
   }
 }

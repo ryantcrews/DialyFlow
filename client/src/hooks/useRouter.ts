@@ -16,11 +16,15 @@ function notify(): void {
 
 window.addEventListener('popstate', notify);
 
-function navigate(to: string): void {
-  if (to !== window.location.pathname + window.location.search) {
+function navigate(to: string, options?: { replace?: boolean }): void {
+  const currentFull = window.location.pathname + window.location.search;
+  if (to === currentFull) return;
+  if (options?.replace) {
+    window.history.replaceState({}, '', to);
+  } else {
     window.history.pushState({}, '', to);
-    notify();
   }
+  notify();
 }
 
 export function useRouter() {

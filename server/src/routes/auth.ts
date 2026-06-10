@@ -1,8 +1,10 @@
 import {
+  USER_ROLES,
   validateChangePassword,
   validateCreateUser,
   validateLogin,
 } from '@dialyrounds/shared';
+import type { UserRole } from '@dialyrounds/shared';
 import type { RouteHandler } from '../env.js';
 import {
   createSession,
@@ -31,7 +33,7 @@ interface UserRow {
   email: string;
   password_hash: string;
   salt: string;
-  role: 'admin' | 'clinician';
+  role: UserRole;
   name: string;
   active: number;
   must_change_password: number;
@@ -69,6 +71,7 @@ export const login: RouteHandler = async (request, ctx) => {
   const token = await createSession(ctx.env, row.id, expiresAt);
   await writeAudit(ctx.env, row.id, 'login', 'user', row.id);
 
+  const secureCookies = ctx.env.ENVIRONMENT === 'production';
   return json(
     {
       user: {
@@ -80,7 +83,7 @@ export const login: RouteHandler = async (request, ctx) => {
       },
     },
     200,
-    { 'Set-Cookie': setSessionCookie(token, maxAgeSeconds) }
+    { 'Set-Cookie': setSessionCookie(token, maxAgeSeconds, secureCookies) }
   );
 };
 
@@ -92,7 +95,9 @@ export const logout: RouteHandler = async (request, ctx) => {
       await writeAudit(ctx.env, ctx.user.id, 'logout', 'user', ctx.user.id);
     }
   }
-  return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie() });
+  return json({ ok: true }, 200, {
+    'Set-Cookie': clearSessionCookie(ctx.env.ENVIRONMENT === 'production'),
+  });
 };
 
 export const me: RouteHandler = async (_request, ctx) => {
@@ -141,7 +146,7 @@ export const listUsers: RouteHandler = async (_request, ctx) => {
     id: number;
     email: string;
     name: string;
-    role: 'admin' | 'clinician';
+    role: UserRole;
     active: number;
     must_change_password: number;
     created_at: string;
@@ -195,7 +200,7 @@ export const updateUser: RouteHandler = async (request, ctx) => {
     updates.push('name = ?');
     values.push(body.name.trim());
   }
-  if (body.role === 'admin' || body.role === 'clinician') {
+  if (typeof body.role === 'string' && (USER_ROLES as readonly string[]).includes(body.role)) {
     updates.push('role = ?');
     values.push(body.role);
   }

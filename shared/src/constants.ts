@@ -16,8 +16,18 @@ export const PATIENT_STATUSES = [
 ] as const;
 export type PatientStatus = (typeof PATIENT_STATUSES)[number];
 
-export const USER_ROLES = ['admin', 'clinician'] as const;
+export const USER_ROLES = ['admin', 'physician', 'physician_assistant'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Admin',
+  physician: 'Physician',
+  physician_assistant: 'Physician Assistant',
+};
+
+export function isClinicalRole(role: UserRole): boolean {
+  return role === 'physician' || role === 'physician_assistant';
+}
 
 export const CLINIC_TIMEZONE = 'America/New_York';
 

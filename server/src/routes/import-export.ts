@@ -79,7 +79,7 @@ export const exportPatients: RouteHandler = async (_request, ctx) => {
      LEFT JOIN (
        SELECT patient_id,
               COUNT(*) as visit_count,
-              MAX(monthly_note) as monthly_note_done
+              MAX(CASE WHEN note_type = 'comprehensive' THEN 1 ELSE 0 END) as monthly_note_done
        FROM visits
        WHERE visit_date >= ? AND visit_date <= ?
        GROUP BY patient_id
@@ -131,7 +131,7 @@ export const complianceReport: RouteHandler = async (_request, ctx) => {
      LEFT JOIN (
        SELECT patient_id,
               COUNT(*) as visit_count,
-              MAX(monthly_note) as monthly_note_done
+              MAX(CASE WHEN note_type = 'comprehensive' THEN 1 ELSE 0 END) as monthly_note_done
        FROM visits
        WHERE visit_date >= ? AND visit_date <= ?
        GROUP BY patient_id
@@ -182,7 +182,7 @@ export const complianceReportExport: RouteHandler = async (_request, ctx) => {
      LEFT JOIN (
        SELECT patient_id,
               COUNT(*) as visit_count,
-              MAX(monthly_note) as monthly_note_done
+              MAX(CASE WHEN note_type = 'comprehensive' THEN 1 ELSE 0 END) as monthly_note_done
        FROM visits
        WHERE visit_date >= ? AND visit_date <= ?
        GROUP BY patient_id

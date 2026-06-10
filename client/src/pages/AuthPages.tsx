@@ -62,7 +62,9 @@ export function LoginPage() {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        <p className="meta">Default admin: admin@dialyrounds.local / ChangeMe123!</p>
+        {import.meta.env.DEV && (
+          <p className="meta">Default admin: admin@dialyrounds.local / ChangeMe123!</p>
+        )}
       </div>
     </div>
   );

@@ -33,6 +33,7 @@ import { createVisit, listVisits, updateVisit } from './routes/visits.js';
 import { json } from './utils/response.js';
 
 const auth = [requireAuth];
+const admin = [...auth, requireAdmin];
 
 export function createRouter(): Router {
   const router = new Router();
@@ -51,13 +52,13 @@ export function createRouter(): Router {
 
   router.on('GET', '/api/patients', listPatients, auth);
   router.on('POST', '/api/patients', createPatient, auth);
-  router.on('PATCH', '/api/patients/:id/assignment', reassignPatient, auth);
-  router.on('PATCH', '/api/patients/:id/status', updatePatientStatus, auth);
+  router.on('PATCH', '/api/patients/:id/assignment', reassignPatient, admin);
+  router.on('PATCH', '/api/patients/:id/status', updatePatientStatus, admin);
   router.on('GET', '/api/patients/:id/summary', getPatientSummary, auth);
   router.on('GET', '/api/patients/:id/visits', listVisits, auth);
   router.on('GET', '/api/patients/:id', getPatient, auth);
   router.on('PATCH', '/api/patients/:id', updatePatient, auth);
-  router.on('DELETE', '/api/patients/:id', deletePatient, auth);
+  router.on('DELETE', '/api/patients/:id', deletePatient, admin);
 
   router.on('POST', '/api/visits', createVisit, auth);
   router.on('PATCH', '/api/visits/:id', updateVisit, auth);

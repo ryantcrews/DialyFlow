@@ -68,6 +68,9 @@ export interface PatientSummary {
 export interface PatientWithProgress extends Patient {
   comprehensiveCount: number;
   basicCount: number;
+  visitLoggedCount: number;
+  lastVisitDate: string | null;
+  lastNoteType: NoteType | null;
   monthlyTarget: number;
   weeklyTarget: number;
 }

@@ -9,7 +9,7 @@ import {
   MONTHLY_NOTE_TARGET,
   WEEKLY_NOTE_TARGET,
 } from '@dialyrounds/shared';
-import type { Patient, PatientStatus, Shift } from '@dialyrounds/shared';
+import type { NoteType, Patient, PatientStatus, Shift } from '@dialyrounds/shared';
 import type { RouteHandler } from '../env.js';
 import { writeAudit } from '../utils/audit.js';
 import { error, json, parseJson } from '../utils/response.js';
@@ -56,18 +56,29 @@ export const listPatients: RouteHandler = async (_request, ctx) => {
 
   let query = `SELECT p.id, p.first_name, p.last_name, p.dob, p.sticky_note, p.unit_id, p.shift, p.status, p.active, p.created_at,
                       COALESCE(v.comprehensive_count, 0) as comprehensive_count,
-                      COALESCE(v.basic_count, 0) as basic_count
+                      COALESCE(v.basic_count, 0) as basic_count,
+                      COALESCE(v.visit_logged_count, 0) as visit_logged_count,
+                      v.last_visit_date,
+                      lv.note_type as last_note_type
                FROM patients p
                LEFT JOIN (
                  SELECT patient_id,
                         SUM(CASE WHEN note_type = 'comprehensive' THEN 1 ELSE 0 END) as comprehensive_count,
-                        SUM(CASE WHEN note_type = 'basic' THEN 1 ELSE 0 END) as basic_count
+                        SUM(CASE WHEN note_type = 'basic' THEN 1 ELSE 0 END) as basic_count,
+                        COUNT(*) as visit_logged_count,
+                        MAX(visit_date) as last_visit_date
                  FROM visits
                  WHERE visit_date >= ? AND visit_date <= ?
                  GROUP BY patient_id
                ) v ON v.patient_id = p.id
+               LEFT JOIN visits lv ON lv.id = (
+                 SELECT id FROM visits
+                 WHERE patient_id = p.id AND visit_date >= ? AND visit_date <= ?
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT 1
+               )
                WHERE p.active = 1 AND p.unit_id = ? AND p.shift = ?`;
-  const binds: unknown[] = [start, end, Number(unitId), shift];
+  const binds: unknown[] = [start, end, start, end, Number(unitId), shift];
 
   if (status !== 'all') {
     query += ' AND p.status = ?';
@@ -76,7 +87,13 @@ export const listPatients: RouteHandler = async (_request, ctx) => {
   query += ' ORDER BY p.last_name, p.first_name';
 
   const { results } = await ctx.env.DB.prepare(query).bind(...binds).all<
-    PatientRow & { comprehensive_count: number; basic_count: number }
+    PatientRow & {
+      comprehensive_count: number;
+      basic_count: number;
+      visit_logged_count: number;
+      last_visit_date: string | null;
+      last_note_type: NoteType | null;
+    }
   >();
 
   await writeAudit(ctx.env, ctx.user!.id, 'list_patients', 'unit', unitId, `shift=${shift}`);
@@ -85,6 +102,9 @@ export const listPatients: RouteHandler = async (_request, ctx) => {
       ...mapPatient(row),
       comprehensiveCount: row.comprehensive_count,
       basicCount: row.basic_count,
+      visitLoggedCount: row.visit_logged_count,
+      lastVisitDate: row.last_visit_date,
+      lastNoteType: row.last_note_type,
       monthlyTarget: MONTHLY_NOTE_TARGET,
       weeklyTarget: WEEKLY_NOTE_TARGET,
     })),

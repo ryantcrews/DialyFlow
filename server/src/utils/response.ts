@@ -31,13 +31,14 @@ export function csvResponse(filename: string, content: string): Response {
 
 export const SESSION_COOKIE = 'dr_session';
 
-export function setSessionCookie(token: string, maxAgeSeconds: number): string {
-  const secure = 'Secure; ';
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; ${secure}SameSite=Strict; Max-Age=${maxAgeSeconds}`;
+export function setSessionCookie(token: string, maxAgeSeconds: number, secure = true): string {
+  const secureFlag = secure ? 'Secure; ' : '';
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; ${secureFlag}SameSite=Strict; Max-Age=${maxAgeSeconds}`;
 }
 
-export function clearSessionCookie(): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`;
+export function clearSessionCookie(secure = true): string {
+  const secureFlag = secure ? 'Secure; ' : '';
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; ${secureFlag}SameSite=Strict; Max-Age=0`;
 }
 
 export function getSessionToken(request: Request): string | null {
