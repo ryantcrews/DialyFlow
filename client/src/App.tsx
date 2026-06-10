@@ -7,25 +7,37 @@ import { AdminPage } from './pages/AdminPage';
 import { AttestPage } from './pages/AttestPage';
 import { ChangePasswordPage, LoginPage } from './pages/AuthPages';
 import { ImportPage } from './pages/ImportPage';
+import { LandingPage } from './pages/LandingPage';
 import { MainPage } from './pages/MainPage';
 import { PatientPage } from './pages/PatientPage';
+import { PrivacyPage } from './pages/PrivacyPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { SecurityPage } from './pages/SecurityPage';
 import { formatDisplayDate } from './utils/dateRange';
-
+import {
+  appOrigin,
+  isAppHost,
+  isAppPath,
+  isMarketingHost,
+  legacyListRedirect,
+  postLoginPath,
+} from './utils/routes';
 function pageTitle(pathname: string): string {
   if (pathname.startsWith('/patients/')) return 'Patient detail';
+  if (pathname === '/patients') return 'Patient list';
   if (pathname === '/attest') return 'Batch attest';
   if (pathname === '/import') return 'Import patients';
   if (pathname === '/reports') return 'Compliance report';
-  if (pathname === '/admin') return 'User management';
-  return 'Patient list';
+  if (pathname === '/admin') return 'Administration';
+  if (pathname === '/login') return 'Sign in';
+  return 'DialyRounds';
 }
 
 function pageSubtitle(pathname: string, searchParams: URLSearchParams): string | null {
-  if (pathname === '/') {
+  if (pathname === '/patients') {
     const shift = searchParams.get('shift');
-    const month = searchParams.get('month');
-    if (shift && month) return `${shift} · ${month}`;
+    const date = searchParams.get('date');
+    if (shift && date) return `${shift} · ${formatDisplayDate(date)}`;
   }
   if (pathname === '/attest') {
     const date = searchParams.get('date');
@@ -33,8 +45,8 @@ function pageSubtitle(pathname: string, searchParams: URLSearchParams): string |
     return 'Sign-off inbox';
   }
   if (pathname.startsWith('/patients/')) {
-    const month = searchParams.get('month');
-    return month ? `Notes for ${month}` : null;
+    const date = searchParams.get('date');
+    return date ? `Notes for ${formatDisplayDate(date)}` : null;
   }
   return null;
 }
@@ -43,11 +55,63 @@ function navClass(active: boolean): string {
   return `btn btn-ghost${active ? ' nav-active' : ''}`;
 }
 
-export function App() {
-  const { user, loading, logout } = useAuth();
+function LoadingShell() {
+  return (
+    <div className="content">
+      <div className="skeleton-card" style={{ height: 120 }} aria-busy="true" />
+    </div>
+  );
+}
+
+function MarketingApp() {
   const { pathname, searchParams, navigate } = useRouter();
+
+  useEffect(() => {
+    if (isAppPath(pathname)) {
+      window.location.href = `${appOrigin()}${pathname}${searchParams.toString() ? `?${searchParams}` : ''}`;
+    }
+  }, [pathname, searchParams]);
+
+  useEffect(() => {
+    if (pathname !== '/' && pathname !== '/security' && pathname !== '/privacy' && !isAppPath(pathname)) {
+      navigate('/', { replace: true });
+    }
+  }, [pathname, navigate]);
+
+  if (isAppPath(pathname)) return <LoadingShell />;
+  if (pathname === '/security') return <SecurityPage />;
+  if (pathname === '/privacy') return <PrivacyPage />;
+  return <LandingPage />;
+}
+
+function AppShell() {
+  const { user, loading, logout } = useAuth();
+  const { pathname, searchParams, navigate, path } = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
   const chromeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    document.title = pageTitle(pathname);
+    let meta = document.querySelector('meta[name="robots"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'robots');
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', 'noindex, nofollow, noai, noimageai');
+  }, [pathname]);
+
+  useEffect(() => {
+    const redirect = legacyListRedirect(pathname, path.includes('?') ? `?${path.split('?')[1]}` : '');
+    if (redirect) navigate(redirect, { replace: true });
+  }, [pathname, path, navigate]);
+
+  useEffect(() => {
+    if (loading || user) return;
+    if (pathname === '/login') return;
+    const returnTo = `${pathname}${searchParams.toString() ? `?${searchParams}` : ''}`;
+    navigate(`/login?returnTo=${encodeURIComponent(returnTo)}`, { replace: true });
+  }, [loading, user, pathname, searchParams, navigate]);
 
   useEffect(() => {
     const chrome = chromeRef.current;
@@ -56,7 +120,7 @@ export function App() {
     const syncStickyTop = () => {
       document.documentElement.style.setProperty(
         '--shell-sticky-top',
-        `${chrome.getBoundingClientRect().height}px`,
+        `${chrome.getBoundingClientRect().height}px`
       );
     };
 
@@ -71,16 +135,11 @@ export function App() {
     };
   }, [pathname, searchParams.toString()]);
 
-  if (loading) {
-    return (
-      <div className="content">
-        <div className="skeleton-card" style={{ height: 120 }} aria-busy="true" />
-      </div>
-    );
-  }
+  if (loading) return <LoadingShell />;
 
   if (!user) {
-    return <LoginPage />;
+    if (pathname === '/login') return <LoginPage />;
+    return <LoadingShell />;
   }
 
   if (user.mustChangePassword) {
@@ -102,17 +161,31 @@ export function App() {
 
   let page = <MainPage />;
   if (pathname.startsWith('/patients/')) page = <PatientPage />;
+  else if (pathname === '/patients') page = <MainPage />;
   else if (pathname === '/attest') page = canAttest ? <AttestPage /> : <MainPage />;
   else if (pathname === '/import') page = canImport ? <ImportPage /> : <MainPage />;
   else if (pathname === '/reports') page = isAdmin ? <ReportsPage /> : <MainPage />;
   else if (pathname === '/admin') page = isAdmin ? <AdminPage /> : <MainPage />;
+  else if (pathname === '/login') {
+    navigate(postLoginPath(), { replace: true });
+    page = <MainPage />;
+  } else {
+    navigate('/patients', { replace: true });
+    page = <MainPage />;
+  }
 
   const title = pageTitle(pathname);
   const subtitle = pageSubtitle(pathname, searchParams);
+  const onPatients = pathname === '/patients';
 
   function go(path: string) {
     setMoreOpen(false);
     navigate(path);
+  }
+
+  async function handleLogout() {
+    await logout();
+    navigate('/login', { replace: true });
   }
 
   const moreActive =
@@ -130,9 +203,9 @@ export function App() {
           </div>
           <nav className="topbar-actions topbar-actions--desktop" aria-label="Main">
             <button
-              className={navClass(pathname === '/')}
+              className={navClass(onPatients)}
               type="button"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/patients')}
             >
               Patients
             </button>
@@ -172,7 +245,7 @@ export function App() {
                 </button>
               </>
             )}
-            <button className="btn btn-ghost" type="button" onClick={() => void logout()}>
+            <button className="btn btn-ghost" type="button" onClick={() => void handleLogout()}>
               Logout
             </button>
           </nav>
@@ -188,9 +261,9 @@ export function App() {
 
       <nav className="bottom-nav" aria-label="Mobile">
         <button
-          className={`bottom-nav-item${pathname === '/' ? ' bottom-nav-item--active' : ''}`}
+          className={`bottom-nav-item${onPatients ? ' bottom-nav-item--active' : ''}`}
           type="button"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/patients')}
         >
           Patients
         </button>
@@ -242,17 +315,15 @@ export function App() {
             Import
           </button>
         )}
-        <button
-          className="more-menu-link"
-          type="button"
-          onClick={() => {
-            setMoreOpen(false);
-            void logout();
-          }}
-        >
+        <button className="more-menu-link" type="button" onClick={() => void handleLogout()}>
           Logout
         </button>
       </MoreMenu>
     </div>
   );
+}
+
+export function App() {
+  if (isMarketingHost()) return <MarketingApp />;
+  return <AppShell />;
 }

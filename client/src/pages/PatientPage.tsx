@@ -10,7 +10,11 @@ import {
 
   WEEKLY_NOTE_TARGET,
 
-  currentMonthInClinic,
+  VISIT_MODE_LABELS,
+
+  dateFromMonthParam,
+  monthFromDate,
+  todayInClinic,
 
   isClinicalRole,
 
@@ -47,6 +51,7 @@ import { useRouter } from '../hooks/useRouter';
 import { useSwipeNav } from '../hooks/useSwipeNav';
 
 import { useToast } from '../hooks/useToast';
+import { patientsListUrl } from '../utils/routes';
 
 
 
@@ -96,11 +101,19 @@ export function PatientPage() {
 
   const id = idMatch?.[1] ?? '';
 
-  const month = searchParams.get('month') ?? currentMonthInClinic();
-
   const unitId = searchParams.get('unit') ?? '';
 
   const shift = searchParams.get('shift') ?? '';
+
+  const monthParam = searchParams.get('month');
+  const dateParam = searchParams.get('date');
+  const date =
+    dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
+      ? dateParam
+      : monthParam && /^\d{4}-\d{2}$/.test(monthParam)
+        ? dateFromMonthParam(monthParam, shift || SHIFTS[0])
+        : todayInClinic();
+  const month = monthFromDate(date);
 
   const startRoundsParam = searchParams.get('rounds') === '1';
 
@@ -122,7 +135,7 @@ export function PatientPage() {
 
   const { data: summaryData, reload: reloadSummary } = useFetch<{ summary: PatientSummary }>(
 
-    id ? `/api/patients/${id}/summary?month=${month}` : null
+    id ? `/api/patients/${id}/summary?date=${date}` : null
 
   );
 
@@ -140,7 +153,7 @@ export function PatientPage() {
 
     unitId && shift
 
-      ? `/api/patients?unit=${unitId}&shift=${encodeURIComponent(shift)}&status=active&month=${month}`
+      ? `/api/patients?unit=${unitId}&shift=${encodeURIComponent(shift)}&status=active&date=${date}`
 
       : null;
 
@@ -168,7 +181,11 @@ export function PatientPage() {
 
   const [reassignShift, setReassignShift] = useState<string>(SHIFTS[0]);
 
-  const [visitDate, setVisitDate] = useState(todayIsoDate());
+  const [visitDate, setVisitDate] = useState(todayInClinic());
+
+  useEffect(() => {
+    setVisitDate(date);
+  }, [date]);
 
   const [noteType, setNoteType] = useState<NoteType>('basic');
 
@@ -284,7 +301,7 @@ export function PatientPage() {
 
   function patientUrl(patientId: number): string {
 
-    const params = new URLSearchParams({ month });
+    const params = new URLSearchParams({ date });
 
     if (unitId) params.set('unit', unitId);
 
@@ -303,21 +320,13 @@ export function PatientPage() {
 
 
   function listUrl(msg?: string): string {
-
-    const params = new URLSearchParams();
-
-    if (unitId) params.set('unit', unitId);
-
-    if (shift) params.set('shift', shift);
-
-    params.set('status', 'active');
-
-    params.set('month', month);
-
-    if (msg) params.set('msg', msg);
-
-    return `/?${params.toString()}`;
-
+    return patientsListUrl({
+      unitId: unitId || undefined,
+      shift: shift ?? SHIFTS[0],
+      status: 'active',
+      date,
+      msg,
+    });
   }
 
 
@@ -330,7 +339,7 @@ export function PatientPage() {
 
     },
 
-    [navigate, month, unitId, shift]
+    [navigate, date, unitId, shift]
 
   );
 
@@ -460,21 +469,15 @@ export function PatientPage() {
 
       });
 
-      const params = new URLSearchParams({
-
-        unit: reassignUnit,
-
-        shift: reassignShift,
-
-        status: 'active',
-
-        month,
-
-        msg: 'Patient reassigned',
-
-      });
-
-      navigate(`/?${params.toString()}`);
+      navigate(
+        patientsListUrl({
+          unitId: reassignUnit,
+          shift: reassignShift,
+          status: 'active',
+          date,
+          msg: 'Patient reassigned',
+        })
+      );
 
     } catch (err) {
 
@@ -597,10 +600,8 @@ export function PatientPage() {
 
 
   const notesComplete =
-
     (summary?.comprehensiveCount ?? 0) >= MONTHLY_NOTE_TARGET &&
-
-    (summary?.basicCount ?? 0) >= WEEKLY_NOTE_TARGET;
+    (summary?.basicCount ?? 0) >= (summary?.weeklyTarget ?? WEEKLY_NOTE_TARGET);
 
 
 
@@ -708,7 +709,7 @@ export function PatientPage() {
 
           {summary?.comprehensiveCount ?? 0}/{MONTHLY_NOTE_TARGET} · Basic {summary?.basicCount ?? 0}/
 
-          {WEEKLY_NOTE_TARGET}
+          {summary?.weeklyTarget ?? WEEKLY_NOTE_TARGET}
 
         </div>
 
@@ -1213,7 +1214,13 @@ function noteTypeLabel(type: NoteType): string {
 
 function visitSummary(visit: Visit): string {
 
-  return `${noteTypeLabel(visit.noteType)} · HD: ${visit.seenOnHd ? 'Y' : 'N'} · CIPA: ${visit.cipa ? 'Y' : 'N'}`;
+  const parts = [
+    `${noteTypeLabel(visit.noteType)} · HD: ${visit.seenOnHd ? 'Y' : 'N'} · CIPA: ${visit.cipa ? 'Y' : 'N'}`,
+  ];
+  if (visit.attestedAt && visit.visitMode) {
+    parts.push(VISIT_MODE_LABELS[visit.visitMode]);
+  }
+  return parts.join(' · ');
 
 }
 
@@ -1611,7 +1618,12 @@ function VisitHistoryItem({
 
                 <div>Recorded: {formatTimestamp(visit.createdAt)}</div>
 
-                <div>Last updated: {formatTimestamp(visit.updatedAt)}</div>
+                <div className="visit-updated-meta">
+                  <span>
+                    Last updated by {visit.updatedByName ?? visit.authorName ?? 'Unknown'}
+                  </span>
+                  <span>{formatTimestamp(visit.updatedAt)}</span>
+                </div>
 
               </div>
 

@@ -17,7 +17,7 @@ import type {
   VisitMode,
 } from '@dialyrounds/shared';
 import type { RouteHandler } from '../env.js';
-import { writeAudit } from '../utils/audit.js';
+import { auditKv, writeAudit } from '../utils/audit.js';
 import { error, json, parseJson } from '../utils/response.js';
 import { nowIso } from '../utils/time.js';
 
@@ -26,6 +26,7 @@ interface AttestRow {
   visit_date: string;
   note_type: NoteType;
   attested_at: string | null;
+  visit_mode: VisitMode | null;
   patient_id: number;
   first_name: string;
   last_name: string;
@@ -41,7 +42,7 @@ interface DayVisitRow extends AttestRow {
   unit_id: number;
   unit_name: string;
   shift: string;
-  visit_mode: VisitMode | null;
+  session_visit_mode: VisitMode | null;
 }
 
 function mapAttestRow(row: AttestRow): AttestVisitRow {
@@ -55,6 +56,7 @@ function mapAttestRow(row: AttestRow): AttestVisitRow {
     authorName: row.author_name,
     attestedAt: row.attested_at,
     attestedByName: row.attested_by_name,
+    visitMode: row.visit_mode,
     seenOnHd: row.seen_on_hd === 1,
     cipa: row.cipa === 1,
     notes: row.notes,
@@ -62,7 +64,7 @@ function mapAttestRow(row: AttestRow): AttestVisitRow {
   };
 }
 
-const SESSION_VISITS_QUERY = `SELECT v.id, v.visit_date, v.note_type, v.attested_at,
+const SESSION_VISITS_QUERY = `SELECT v.id, v.visit_date, v.note_type, v.attested_at, v.visit_mode,
        v.seen_on_hd, v.cipa, v.notes, v.assessment,
        p.id as patient_id, p.first_name, p.last_name,
        author.name as author_name,
@@ -75,7 +77,7 @@ WHERE p.active = 1 AND p.unit_id = ? AND p.shift = ?
   AND v.visit_date = ? AND v.visit_logged = 1
 ORDER BY p.last_name, p.first_name, v.id DESC`;
 
-const ATTEST_LIST_QUERY = `SELECT v.id, v.visit_date, v.note_type, v.attested_at,
+const ATTEST_LIST_QUERY = `SELECT v.id, v.visit_date, v.note_type, v.attested_at, v.visit_mode,
        v.seen_on_hd, v.cipa, v.notes, v.assessment,
        p.id as patient_id, p.first_name, p.last_name,
        author.name as author_name,
@@ -102,13 +104,13 @@ GROUP BY p.unit_id, p.shift, v.visit_date
 HAVING pending_count > 0
 ORDER BY v.visit_date DESC, u.name, p.shift`;
 
-const DAY_VISITS_QUERY = `SELECT v.id, v.visit_date, v.note_type, v.attested_at,
+const DAY_VISITS_QUERY = `SELECT v.id, v.visit_date, v.note_type, v.attested_at, v.visit_mode,
        v.seen_on_hd, v.cipa, v.notes, v.assessment,
        p.id as patient_id, p.first_name, p.last_name,
        p.unit_id, u.name as unit_name, p.shift,
        author.name as author_name,
        attester.name as attested_by_name,
-       ss.visit_mode
+       ss.visit_mode as session_visit_mode
 FROM visits v
 JOIN patients p ON p.id = v.patient_id
 JOIN units u ON u.id = p.unit_id
@@ -141,7 +143,7 @@ function buildDayBoard(date: string, rows: DayVisitRow[]): AttestDayBoard {
         unitName: row.unit_name,
         shift: row.shift as Shift,
         visitDate: date,
-        visitMode: row.visit_mode,
+        visitMode: row.session_visit_mode,
         pendingCount: 0,
         totalCount: 0,
         visits: [],
@@ -152,13 +154,13 @@ function buildDayBoard(date: string, rows: DayVisitRow[]): AttestDayBoard {
     bucket.visits.push(visit);
     bucket.totalCount++;
     if (!visit.attestedAt) bucket.pendingCount++;
-    if (row.visit_mode) bucket.visitMode = row.visit_mode;
+    if (row.session_visit_mode) bucket.visitMode = row.session_visit_mode;
   }
 
-  const pendingBuckets = [...bucketMap.values()].filter((b) => b.pendingCount > 0);
+  const allBuckets = [...bucketMap.values()];
   const unitMap = new Map<number, AttestDayUnitGroup>();
 
-  for (const bucket of pendingBuckets) {
+  for (const bucket of allBuckets) {
     let unit = unitMap.get(bucket.unitId);
     if (!unit) {
       unit = { unitId: bucket.unitId, unitName: bucket.unitName, shifts: [] };
@@ -172,8 +174,8 @@ function buildDayBoard(date: string, rows: DayVisitRow[]): AttestDayBoard {
     unit.shifts.sort((a, b) => a.shift.localeCompare(b.shift));
   }
 
-  const pendingCount = pendingBuckets.reduce((sum, b) => sum + b.pendingCount, 0);
-  const totalCount = pendingBuckets.reduce((sum, b) => sum + b.totalCount, 0);
+  const pendingCount = allBuckets.reduce((sum, b) => sum + b.pendingCount, 0);
+  const totalCount = allBuckets.reduce((sum, b) => sum + b.totalCount, 0);
 
   return { date, pendingCount, totalCount, units };
 }
@@ -186,7 +188,6 @@ export const getAttestDay: RouteHandler = async (_request, ctx) => {
   const { results } = await ctx.env.DB.prepare(DAY_VISITS_QUERY).bind(date).all<DayVisitRow>();
   const board = buildDayBoard(date, results ?? []);
 
-  await writeAudit(ctx.env, ctx.user!.id, 'get_attest_day', 'attest', null, `date=${date}`);
   return json(board);
 };
 
@@ -217,7 +218,6 @@ export const listAttestQueue: RouteHandler = async (_request, ctx) => {
     visitMode: row.visit_mode,
   }));
 
-  await writeAudit(ctx.env, ctx.user!.id, 'list_attest_queue', 'attest', null);
   return json({ items });
 };
 
@@ -260,15 +260,6 @@ export const getAttestSession: RouteHandler = async (_request, ctx) => {
     totalCount: visits.length,
     visits,
   };
-
-  await writeAudit(
-    ctx.env,
-    ctx.user!.id,
-    'get_attest_session',
-    'unit',
-    unitId,
-    `shift=${shift};date=${visitDate}`
-  );
 
   return json(session);
 };
@@ -321,36 +312,87 @@ export const listAttestVisits: RouteHandler = async (_request, ctx) => {
   const visits = (results ?? []).map(mapAttestRow);
   const pendingCount = visits.filter((v) => !v.attestedAt).length;
 
-  await writeAudit(
-    ctx.env,
-    ctx.user!.id,
-    'list_attest',
-    'unit',
-    unitId,
-    `shift=${shift};start=${start};end=${end}`
-  );
-
   return json({ visits, pendingCount, totalCount: visits.length });
 };
+
+async function getSessionVisitMode(
+  db: D1Database,
+  unitId: number,
+  shift: string,
+  sessionDate: string
+): Promise<VisitMode | null> {
+  const row = await db
+    .prepare(
+      `SELECT visit_mode FROM shift_sessions
+       WHERE unit_id = ? AND shift = ? AND session_date = ?`
+    )
+    .bind(unitId, shift, sessionDate)
+    .first<{ visit_mode: VisitMode | null }>();
+  return row?.visit_mode ?? null;
+}
+
+type AttestOutcome = 'ok' | 'not_found' | 'already' | 'not_logged' | 'no_mode' | 'failed';
+
+async function attestSingleVisit(
+  db: D1Database,
+  userId: number,
+  visitId: number
+): Promise<AttestOutcome> {
+  const visit = await db
+    .prepare(
+      `SELECT v.id, v.visit_date, v.attested_at, v.visit_logged,
+              p.unit_id, p.shift
+       FROM visits v
+       JOIN patients p ON p.id = v.patient_id
+       WHERE v.id = ?`
+    )
+    .bind(visitId)
+    .first<{
+      id: number;
+      visit_date: string;
+      attested_at: string | null;
+      visit_logged: number;
+      unit_id: number;
+      shift: string;
+    }>();
+
+  if (!visit) return 'not_found';
+  if (visit.attested_at) return 'already';
+  if (visit.visit_logged !== 1) return 'not_logged';
+
+  const sessionMode = await getSessionVisitMode(
+    db,
+    visit.unit_id,
+    visit.shift,
+    visit.visit_date
+  );
+  if (!sessionMode) return 'no_mode';
+
+  const now = nowIso();
+  const result = await db
+    .prepare(
+      `UPDATE visits SET attested_at = ?, attested_by = ?, visit_mode = ?
+       WHERE id = ? AND attested_at IS NULL AND visit_logged = 1`
+    )
+    .bind(now, userId, sessionMode, visitId)
+    .run();
+
+  return (result.meta.changes ?? 0) > 0 ? 'ok' : 'failed';
+}
 
 async function attestVisits(
   db: D1Database,
   userId: number,
   visitIds: number[]
-): Promise<number> {
-  const now = nowIso();
+): Promise<{ attested: number; noMode: number }> {
   let attested = 0;
+  let noMode = 0;
   for (const visitId of visitIds) {
-    const result = await db
-      .prepare(
-        `UPDATE visits SET attested_at = ?, attested_by = ?
-         WHERE id = ? AND attested_at IS NULL AND visit_logged = 1`
-      )
-      .bind(now, userId, visitId)
-      .run();
-    if ((result.meta.changes ?? 0) > 0) attested++;
+    const outcome = await attestSingleVisit(db, userId, visitId);
+    if (outcome === 'ok') attested++;
+    else if (outcome === 'no_mode') noMode++;
   }
-  return attested;
+  return { attested, noMode };
 }
 
 export const batchAttest: RouteHandler = async (request, ctx) => {
@@ -358,36 +400,66 @@ export const batchAttest: RouteHandler = async (request, ctx) => {
   const parsed = validateBatchAttest(body);
   if (!parsed.ok) return error('Validation failed', 400, parsed.errors);
 
-  const attested = await attestVisits(ctx.env.DB, ctx.user!.id, parsed.value.visitIds);
+  const { attested, noMode } = await attestVisits(ctx.env.DB, ctx.user!.id, parsed.value.visitIds);
   await writeAudit(
     ctx.env,
     ctx.user!.id,
     'batch_attest',
     'visit',
     null,
-    `count=${attested};requested=${parsed.value.visitIds.length}`
+    `count=${attested};requested=${parsed.value.visitIds.length};no_mode=${noMode}`
   );
 
-  return json({ attested });
+  if (attested === 0 && noMode > 0) {
+    return error('Select telemed or in person for this shift before signing off', 400);
+  }
+
+  return json({ attested, skippedNoMode: noMode });
 };
 
 export const attestVisit: RouteHandler = async (_request, ctx) => {
   const visitId = Number(ctx.params.id);
   if (!Number.isInteger(visitId)) return error('Invalid visit id', 400);
 
-  const attested = await attestVisits(ctx.env.DB, ctx.user!.id, [visitId]);
-  if (attested === 0) {
-    const existing = await ctx.env.DB.prepare(
-      'SELECT attested_at, visit_logged FROM visits WHERE id = ?'
+  const outcome = await attestSingleVisit(ctx.env.DB, ctx.user!.id, visitId);
+  if (outcome === 'ok') {
+    const row = await ctx.env.DB.prepare(
+      `SELECT v.note_type, v.visit_mode, v.visit_date, p.last_name, p.first_name
+       FROM visits v
+       JOIN patients p ON p.id = v.patient_id
+       WHERE v.id = ?`
     )
       .bind(visitId)
-      .first<{ attested_at: string | null; visit_logged: number }>();
-    if (!existing) return error('Visit not found', 404);
-    if (existing.attested_at) return error('Visit already attested', 409);
-    if (existing.visit_logged !== 1) return error('Visit has not been logged', 400);
-    return error('Could not attest visit', 400);
+      .first<{
+        note_type: NoteType;
+        visit_mode: VisitMode | null;
+        visit_date: string;
+        last_name: string;
+        first_name: string;
+      }>();
+
+    await writeAudit(
+      ctx.env,
+      ctx.user!.id,
+      'attest_visit',
+      'visit',
+      visitId,
+      auditKv({
+        patient: row ? `${row.last_name}, ${row.first_name}` : undefined,
+        noteType: row?.note_type,
+        visitMode: row?.visit_mode ?? undefined,
+        visitDate: row?.visit_date,
+      })
+    );
+    return json({ ok: true });
   }
 
-  await writeAudit(ctx.env, ctx.user!.id, 'attest_visit', 'visit', visitId);
-  return json({ ok: true });
+  if (outcome === 'not_found') return error('Visit not found', 404);
+  if (outcome === 'already') return error('Visit already attested', 409);
+  if (outcome === 'not_logged') return error('Visit has not been logged', 400);
+  if (outcome === 'no_mode') {
+    return error('Select telemed or in person for this shift before signing off', 400);
+  }
+
+  return error('Could not attest visit', 400);
 };

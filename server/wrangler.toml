@@ -10,8 +10,42 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "dialyrounds"
-database_id = "local-dev-placeholder"
+database_id = "54203c82-0058-4041-99e1-bc7330d3db35"
 migrations_dir = "migrations"
 
 [vars]
 ENVIRONMENT = "development"
+
+[env.production]
+name = "dialyrounds"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "dialyrounds"
+database_id = "54203c82-0058-4041-99e1-bc7330d3db35"
+migrations_dir = "migrations"
+
+[env.production.assets]
+directory = "../client/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[env.development]
+name = "dialyrounds-dev"
+
+[env.development.vars]
+ENVIRONMENT = "development"
+
+[[env.development.d1_databases]]
+binding = "DB"
+database_name = "dialyrounds"
+database_id = "54203c82-0058-4041-99e1-bc7330d3db35"
+migrations_dir = "migrations"
+
+[env.development.assets]
+directory = "../client/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"

@@ -69,6 +69,31 @@ export function DateRangePicker({
   );
 }
 
+export function DayPicker({
+  value,
+  onChange,
+  id = 'roster-date',
+  max,
+}: {
+  value: string;
+  onChange: (date: string) => void;
+  id?: string;
+  max?: string;
+}) {
+  return (
+    <div className="field">
+      <label htmlFor={id}>Date</label>
+      <input
+        id={id}
+        type="date"
+        value={value}
+        max={max}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
 export function MonthPicker({
   value,
   onChange,

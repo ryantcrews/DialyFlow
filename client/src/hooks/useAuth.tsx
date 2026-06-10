@@ -1,5 +1,6 @@
 import type { UserPublic } from '@dialyrounds/shared';
 import { SESSION_IDLE_MS } from '@dialyrounds/shared';
+import { isMarketingHost } from '../utils/routes';
 import {
   createContext,
   useCallback,
@@ -41,6 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isMarketingHost()) {
+      setLoading(false);
+      return;
+    }
     refresh();
   }, [refresh]);
 

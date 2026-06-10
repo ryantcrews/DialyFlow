@@ -1,8 +1,11 @@
 import {
   USER_ROLES,
+  validateBootstrap,
   validateChangePassword,
   validateCreateUser,
   validateLogin,
+  passwordValidationError,
+  SEED_UNITS,
 } from '@dialyrounds/shared';
 import type { UserRole } from '@dialyrounds/shared';
 import type { RouteHandler } from '../env.js';
@@ -12,7 +15,7 @@ import {
   resetFailedLogin,
   revokeSession,
 } from '../middleware/auth.js';
-import { writeAudit } from '../utils/audit.js';
+import { auditKv, writeAudit } from '../utils/audit.js';
 import {
   generateSalt,
   hashPassword,
@@ -40,6 +43,14 @@ interface UserRow {
   locked_until: string | null;
 }
 
+function clientIp(request: Request): string {
+  return (
+    request.headers.get('CF-Connecting-IP') ??
+    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ??
+    'unknown'
+  );
+}
+
 export const login: RouteHandler = async (request, ctx) => {
   const body = await parseJson(request);
   const parsed = validateLogin(body);
@@ -62,14 +73,28 @@ export const login: RouteHandler = async (request, ctx) => {
   const valid = await verifyPassword(parsed.value.password, row.salt, row.password_hash);
   if (!valid) {
     await recordFailedLogin(ctx.env, row.id);
-    await writeAudit(ctx.env, row.id, 'login_failed', 'user', row.id);
+    await writeAudit(
+      ctx.env,
+      row.id,
+      'login_failed',
+      'user',
+      row.id,
+      auditKv({ email: row.email, ip: clientIp(request) })
+    );
     return error('Invalid email or password', 401);
   }
 
   await resetFailedLogin(ctx.env, row.id);
   const { expiresAt, maxAgeSeconds } = sessionExpiry();
   const token = await createSession(ctx.env, row.id, expiresAt);
-  await writeAudit(ctx.env, row.id, 'login', 'user', row.id);
+  await writeAudit(
+    ctx.env,
+    row.id,
+    'login',
+    'user',
+    row.id,
+    auditKv({ email: row.email, name: row.name, ip: clientIp(request) })
+  );
 
   const secureCookies = ctx.env.ENVIRONMENT === 'production';
   return json(
@@ -92,7 +117,14 @@ export const logout: RouteHandler = async (request, ctx) => {
   if (token) {
     await revokeSession(ctx.env, token);
     if (ctx.user) {
-      await writeAudit(ctx.env, ctx.user.id, 'logout', 'user', ctx.user.id);
+      await writeAudit(
+        ctx.env,
+        ctx.user.id,
+        'logout',
+        'user',
+        ctx.user.id,
+        auditKv({ email: ctx.user.email, name: ctx.user.name })
+      );
     }
   }
   return json({ ok: true }, 200, {
@@ -226,7 +258,8 @@ export const resetUserPassword: RouteHandler = async (request, ctx) => {
 
   const body = (await parseJson<{ password?: string }>(request)) ?? {};
   const password = typeof body.password === 'string' ? body.password : '';
-  if (password.length < 8) return error('Password must be at least 8 characters', 400);
+  const passwordError = passwordValidationError(password);
+  if (passwordError) return error(passwordError, 400);
 
   const salt = await generateSalt();
   const passwordHash = await hashPassword(password, salt);
@@ -238,6 +271,57 @@ export const resetUserPassword: RouteHandler = async (request, ctx) => {
 
   await writeAudit(ctx.env, ctx.user!.id, 'reset_password', 'user', id);
   return json({ ok: true });
+};
+
+export async function ensureSeedUnits(db: D1Database): Promise<void> {
+  const units = await db.prepare('SELECT COUNT(*) as count FROM units').first<{ count: number }>();
+  if ((units?.count ?? 0) > 0) return;
+  for (const name of SEED_UNITS) {
+    await db.prepare('INSERT INTO units (name) VALUES (?)').bind(name).run();
+  }
+}
+
+export const bootstrap: RouteHandler = async (request, ctx) => {
+  if (ctx.env.ENVIRONMENT !== 'production') {
+    return error('Bootstrap is only available in production', 404);
+  }
+
+  const configuredToken = ctx.env.BOOTSTRAP_TOKEN;
+  if (!configuredToken) {
+    return error('Bootstrap is not configured', 503);
+  }
+
+  const existing = await ctx.env.DB.prepare('SELECT id FROM users LIMIT 1').first();
+  if (existing) return error('Bootstrap already completed', 409);
+
+  const body = await parseJson(request);
+  const parsed = validateBootstrap(body);
+  if (!parsed.ok) return error('Validation failed', 400, parsed.errors);
+
+  if (parsed.value.token !== configuredToken) {
+    return error('Invalid bootstrap token', 403);
+  }
+
+  const salt = await generateSalt();
+  const passwordHash = await hashPassword(parsed.value.password, salt);
+  const result = await ctx.env.DB.prepare(
+    `INSERT INTO users (email, password_hash, salt, role, name, must_change_password)
+     VALUES (?, ?, ?, 'admin', ?, 0)`
+  )
+    .bind(parsed.value.email, passwordHash, salt, parsed.value.name)
+    .run();
+
+  await ensureSeedUnits(ctx.env.DB);
+  await writeAudit(
+    ctx.env,
+    Number(result.meta.last_row_id),
+    'bootstrap',
+    'user',
+    result.meta.last_row_id,
+    `ip=${clientIp(request)}`
+  );
+
+  return json({ ok: true, userId: result.meta.last_row_id }, 201);
 };
 
 export async function ensureAdminUser(db: D1Database): Promise<void> {
@@ -253,18 +337,5 @@ export async function ensureAdminUser(db: D1Database): Promise<void> {
     .bind('admin@dialyrounds.local', passwordHash, salt)
     .run();
 
-  const units = await db.prepare('SELECT COUNT(*) as count FROM units').first<{ count: number }>();
-  if ((units?.count ?? 0) === 0) {
-    const names = [
-      'West Iredell WFB',
-      'Wilkesboro WFB',
-      'Davie WFB',
-      'Statesville WFB',
-      'Lake Norman WFB',
-      'Taylorsville FMC',
-    ];
-    for (const name of names) {
-      await db.prepare('INSERT INTO units (name) VALUES (?)').bind(name).run();
-    }
-  }
+  await ensureSeedUnits(db);
 }

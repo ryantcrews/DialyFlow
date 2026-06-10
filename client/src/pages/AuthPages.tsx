@@ -1,11 +1,14 @@
-import { currentMonthInClinic, SHIFTS } from '@dialyrounds/shared';
+import { PASSWORD_MIN_LENGTH, PASSWORD_REQUIREMENTS } from '@dialyrounds/shared';
 import { useState } from 'react';
 import { ApiClientError, api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
+import { useRouter } from '../hooks/useRouter';
+import { postLoginPath } from '../utils/routes';
 
 export function LoginPage() {
   const { refresh } = useAuth();
-  const [email, setEmail] = useState('admin@dialyrounds.local');
+  const { navigate } = useRouter();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -20,6 +23,7 @@ export function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       await refresh();
+      navigate(postLoginPath(), { replace: true });
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : 'Login failed');
     } finally {
@@ -72,6 +76,7 @@ export function LoginPage() {
 
 export function ChangePasswordPage() {
   const { refresh } = useAuth();
+  const { navigate } = useRouter();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +92,7 @@ export function ChangePasswordPage() {
         body: JSON.stringify({ currentPassword, newPassword }),
       });
       await refresh();
+      navigate(postLoginPath(), { replace: true });
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : 'Could not change password');
     } finally {
@@ -117,11 +123,12 @@ export function ChangePasswordPage() {
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              minLength={8}
+              minLength={PASSWORD_MIN_LENGTH}
               required
             />
           </div>
           {error && <p className="error-text">{error}</p>}
+          <p className="meta">{PASSWORD_REQUIREMENTS}</p>
           <button className="btn btn-primary" type="submit" disabled={loading}>
             Update password
           </button>
@@ -130,5 +137,3 @@ export function ChangePasswordPage() {
     </div>
   );
 }
-
-export { SHIFTS, currentMonthInClinic };

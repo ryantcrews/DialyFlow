@@ -1,5 +1,6 @@
 import {
   NOTE_TYPES,
+  PASSWORD_REQUIREMENTS,
   PATIENT_STATUSES,
   SHIFTS,
   USER_ROLES,
@@ -8,6 +9,7 @@ import {
 import type {
   AssignmentRequest,
   BatchAttestRequest,
+  BootstrapRequest,
   ChangePasswordRequest,
   CreatePatientRequest,
   CreateUserRequest,
@@ -49,7 +51,14 @@ function isMonthString(value: string): boolean {
 }
 
 function isPassword(value: string): boolean {
-  return value.length >= 8;
+  if (value.length < 12) return false;
+  if (!/[A-Za-z]/.test(value)) return false;
+  if (!/[0-9]/.test(value)) return false;
+  return true;
+}
+
+export function passwordValidationError(password: string): string | null {
+  return isPassword(password) ? null : PASSWORD_REQUIREMENTS;
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {
@@ -81,7 +90,7 @@ export function validateChangePassword(body: unknown): ValidationResult<ChangePa
   const newPassword = typeof obj.newPassword === 'string' ? obj.newPassword : '';
   const errors: string[] = [];
   if (!currentPassword) errors.push('Current password is required');
-  if (!isPassword(newPassword)) errors.push('New password must be at least 8 characters');
+  if (!isPassword(newPassword)) errors.push(PASSWORD_REQUIREMENTS);
   return errors.length ? fail(errors) : ok({ currentPassword, newPassword });
 }
 
@@ -96,9 +105,25 @@ export function validateCreateUser(body: unknown): ValidationResult<CreateUserRe
   if (!isEmail(email)) errors.push('Valid email is required');
   if (!name) errors.push('Name is required');
   if (!isOneOf(role, USER_ROLES)) errors.push('Valid role is required');
-  if (!isPassword(password)) errors.push('Password must be at least 8 characters');
+  if (!isPassword(password)) errors.push(PASSWORD_REQUIREMENTS);
   if (errors.length) return fail(errors);
   return ok({ email, name, role: role as (typeof USER_ROLES)[number], password });
+}
+
+export function validateBootstrap(body: unknown): ValidationResult<BootstrapRequest> {
+  const obj = parseObject(body);
+  if (!obj) return fail(['Invalid request body']);
+  const token = typeof obj.token === 'string' ? obj.token : '';
+  const email = typeof obj.email === 'string' ? obj.email.trim().toLowerCase() : '';
+  const name = typeof obj.name === 'string' ? obj.name.trim() : '';
+  const password = typeof obj.password === 'string' ? obj.password : '';
+  const errors: string[] = [];
+  if (!token) errors.push('Bootstrap token is required');
+  if (!isEmail(email)) errors.push('Valid email is required');
+  if (!name) errors.push('Name is required');
+  if (!isPassword(password)) errors.push(PASSWORD_REQUIREMENTS);
+  if (errors.length) return fail(errors);
+  return ok({ token, email, name, password });
 }
 
 export function validateCreatePatient(body: unknown): ValidationResult<CreatePatientRequest> {
@@ -116,6 +141,10 @@ export function validateCreatePatient(body: unknown): ValidationResult<CreatePat
   if (!isDateString(dob)) errors.push('DOB must be YYYY-MM-DD');
   if (!Number.isInteger(unitId) || unitId <= 0) errors.push('Valid unit is required');
   if (!isOneOf(shift, SHIFTS)) errors.push('Valid shift is required');
+  const admissionDate =
+    typeof obj.admissionDate === 'string' && isDateString(obj.admissionDate.trim())
+      ? obj.admissionDate.trim()
+      : undefined;
   if (errors.length) {
     return fail(errors);
   }
@@ -126,6 +155,7 @@ export function validateCreatePatient(body: unknown): ValidationResult<CreatePat
     unitId,
     shift: shift as (typeof SHIFTS)[number],
     stickyNote,
+    admissionDate,
   });
 }
 
@@ -349,24 +379,4 @@ export function validateUpdateAttestSession(
     visitDate,
     visitMode: obj.visitMode as (typeof VISIT_MODES)[number],
   });
-}
-
-export function currentMonthInClinic(): string {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
-    year: 'numeric',
-    month: '2-digit',
-  });
-  const parts = formatter.formatToParts(new Date());
-  const year = parts.find((p) => p.type === 'year')?.value ?? '1970';
-  const month = parts.find((p) => p.type === 'month')?.value ?? '01';
-  return `${year}-${month}`;
-}
-
-export function monthDateRange(month: string): { start: string; end: string } {
-  const [year, mon] = month.split('-').map(Number);
-  const start = `${month}-01`;
-  const lastDay = new Date(Date.UTC(year, mon, 0)).getUTCDate();
-  const end = `${month}-${String(lastDay).padStart(2, '0')}`;
-  return { start, end };
 }

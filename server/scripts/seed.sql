@@ -1,5 +1,5 @@
--- Seed dialysis units
-INSERT INTO units (name) VALUES
+-- Seed dialysis units (safe to re-run)
+INSERT OR IGNORE INTO units (name) VALUES
   ('West Iredell WFB'),
   ('Wilkesboro WFB'),
   ('Davie WFB'),

@@ -24,6 +24,18 @@ export interface UserPublic {
   mustChangePassword: boolean;
 }
 
+export interface AuditLogEntry {
+  id: number;
+  userId: number | null;
+  userName: string | null;
+  userEmail: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  details: string;
+  createdAt: string;
+}
+
 export interface Patient {
   id: number;
   firstName: string;
@@ -34,6 +46,7 @@ export interface Patient {
   shift: Shift;
   status: PatientStatus;
   active: boolean;
+  admissionDate: string;
   createdAt: string;
 }
 
@@ -52,6 +65,9 @@ export interface Visit {
   attestedAt: string | null;
   attestedBy: number | null;
   attestedByName?: string | null;
+  visitMode: VisitMode | null;
+  authorName?: string | null;
+  updatedByName?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -59,6 +75,7 @@ export interface Visit {
 export interface PatientSummary {
   patientId: number;
   month: string;
+  date?: string;
   monthlyNoteDone: boolean;
   weeklyNotesCount: number;
   visitLoggedCount: number;
@@ -103,6 +120,7 @@ export interface AttestVisitRow {
   authorName: string;
   attestedAt: string | null;
   attestedByName: string | null;
+  visitMode: VisitMode | null;
   seenOnHd: boolean;
   cipa: boolean;
   notes: string;
@@ -194,6 +212,7 @@ export interface CreatePatientRequest {
   unitId: number;
   shift: Shift;
   stickyNote?: string;
+  admissionDate?: string;
 }
 
 export interface UpdatePatientRequest {
@@ -241,4 +260,11 @@ export interface ImportRequest {
 export interface ImportResult {
   added: number;
   skipped: number;
+}
+
+export interface BootstrapRequest {
+  token: string;
+  email: string;
+  name: string;
+  password: string;
 }

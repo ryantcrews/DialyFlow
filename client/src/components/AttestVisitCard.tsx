@@ -12,15 +12,18 @@ function yesNo(value: boolean): string {
 
 export function AttestVisitCard({
   visit,
-  visitMode,
+  sessionVisitMode,
   busy,
   onSign,
 }: {
   visit: AttestVisitRow;
-  visitMode: VisitMode | null;
+  sessionVisitMode: VisitMode | null;
   busy: boolean;
   onSign: (visitId: number) => void;
 }) {
+  const displayMode = visit.attestedAt ? visit.visitMode : sessionVisitMode;
+  const canSign = Boolean(sessionVisitMode);
+
   return (
     <article
       className={`attest-visit-card${visit.attestedAt ? ' attest-visit-card--signed' : ' attest-visit-card--pending'}`}
@@ -30,13 +33,13 @@ export function AttestVisitCard({
           <h4 className="attest-visit-card-name">
             {visit.lastName}, {visit.firstName}
           </h4>
-          <p className="meta">Note by {visit.authorName}</p>
+          <p className="meta">
+            Note by {visit.authorName}
+            {visit.attestedAt && visit.attestedByName ? ` · Signed by ${visit.attestedByName}` : ''}
+          </p>
         </div>
         {visit.attestedAt ? (
-          <StatusChip
-            variant="success"
-            label={`Completed · ${visit.attestedByName ?? 'unknown'}`}
-          />
+          <StatusChip variant="success" label="Completed" />
         ) : (
           <StatusChip variant="pending" label="Pending sign-off" />
         )}
@@ -46,7 +49,7 @@ export function AttestVisitCard({
         <StatusChip variant="neutral" label={noteLabel(visit.noteType)} />
         <StatusChip variant="neutral" label={`CIPA: ${yesNo(visit.cipa)}`} />
         <StatusChip variant="neutral" label={`Seen on HD: ${yesNo(visit.seenOnHd)}`} />
-        {visitMode && <StatusChip variant="neutral" label={VISIT_MODE_LABELS[visitMode]} />}
+        {displayMode && <StatusChip variant="neutral" label={VISIT_MODE_LABELS[displayMode]} />}
       </div>
 
       {visit.noteType === 'comprehensive' && visit.assessment.trim() && (
@@ -63,16 +66,21 @@ export function AttestVisitCard({
         </p>
       </div>
 
-      {!visit.attestedAt && (
-        <button
-          type="button"
-          className="btn btn-primary attest-sign-btn"
-          disabled={busy}
-          onClick={() => onSign(visit.visitId)}
-        >
-          Note signed
-        </button>
-      )}
+      <div className="attest-visit-card-actions">
+        {!visit.attestedAt ? (
+          <button
+            type="button"
+            className="btn btn-primary attest-sign-btn"
+            disabled={busy || !canSign}
+            title={!canSign ? 'Select telemed or in person for this shift first' : undefined}
+            onClick={() => onSign(visit.visitId)}
+          >
+            Note signed
+          </button>
+        ) : (
+          <div className="attest-sign-btn-spacer" aria-hidden="true" />
+        )}
+      </div>
     </article>
   );
 }

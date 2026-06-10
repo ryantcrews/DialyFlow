@@ -6,10 +6,16 @@
   "scripts": {
     "dev": "wrangler dev",
     "build": "npm run build --workspace=@dialyrounds/client && wrangler deploy --dry-run --outdir=dist",
-    "deploy": "npm run build --workspace=@dialyrounds/client && wrangler deploy",
+    "deploy": "npm run build:deploy:prod --workspace=@dialyrounds/client && wrangler deploy --env production",
+    "deploy:dev": "npm run build:deploy:dev --workspace=@dialyrounds/client && wrangler deploy --env development",
     "db:migrate:local": "wrangler d1 migrations apply dialyrounds --local",
+    "db:migrate:dev:remote": "wrangler d1 migrations apply dialyrounds --env development --remote",
+    "db:migrate:prod:remote": "wrangler d1 migrations apply dialyrounds --env production --remote",
     "db:seed:local": "wrangler d1 execute dialyrounds --local --file=./scripts/seed.sql",
+    "db:seed:units:remote": "wrangler d1 execute dialyrounds --remote --file=./scripts/seed.sql",
     "db:seed:mock:local": "node ./scripts/generate-mock-seed.mjs && wrangler d1 execute dialyrounds --local --file=./scripts/seed-mock-data.sql",
+    "db:seed:mock:remote": "node ./scripts/generate-mock-seed.mjs && wrangler d1 execute dialyrounds --remote --file=./scripts/seed-mock-data.sql",
+    "db:seed:dev:remote": "npm run db:seed:units:remote && npm run db:seed:mock:remote",
     "db:reset-user:local": "node ./scripts/reset-local-user.mjs",
     "db:reset:local": "node ./scripts/reset-local-db.mjs"
   },

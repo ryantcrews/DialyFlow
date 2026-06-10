@@ -137,8 +137,7 @@ export function ReportsPage() {
                       <td>
                         <button
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ padding: 0, minHeight: 0 }}
+                          className="report-patient-link"
                           onClick={() => navigate(patientLink(row, month, unitId, shift))}
                         >
                           {row.lastName}, {row.firstName}

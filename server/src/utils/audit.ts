@@ -1,5 +1,20 @@
 import type { Env } from '../env.js';
 
+export function auditKv(parts: Record<string, string | number | boolean | null | undefined>): string {
+  return Object.entries(parts)
+    .filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${key}=${value}`)
+    .join(';');
+}
+
+export async function patientAuditLabel(db: D1Database, patientId: number): Promise<string> {
+  const row = await db
+    .prepare('SELECT last_name, first_name FROM patients WHERE id = ?')
+    .bind(patientId)
+    .first<{ last_name: string; first_name: string }>();
+  return row ? `${row.last_name}, ${row.first_name}` : `patient#${patientId}`;
+}
+
 export async function writeAudit(
   env: Env,
   userId: number | null,

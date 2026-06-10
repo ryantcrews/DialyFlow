@@ -52,3 +52,7 @@ export const SESSION_IDLE_MS = 60 * 60 * 1000;
 export const SESSION_MAX_MS = 24 * 60 * 60 * 1000;
 export const LOGIN_MAX_ATTEMPTS = 5;
 export const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
+
+export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_REQUIREMENTS =
+  'Password must be at least 12 characters and include a letter and a number';

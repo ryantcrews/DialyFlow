@@ -3,22 +3,41 @@ import {
   MONTHLY_NOTE_TARGET,
   SHIFTS,
   WEEKLY_NOTE_TARGET,
-  currentMonthInClinic,
+  dateFromMonthParam,
+  monthFromDate,
+  nearestShiftDates,
+  shiftExpectedDays,
+  todayInClinic,
 } from '@dialyrounds/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { ApiClientError, downloadCsv } from '../api/client';
+import { DayPicker } from '../components/DateRangePicker';
 import { PatientListSkeleton } from '../components/Skeleton';
+import { PatientStatusBadges } from '../components/PatientStatusBadges';
 import { mutate, useFetch } from '../hooks/useApi';
 import { useRouter } from '../hooks/useRouter';
 import { useToast } from '../hooks/useToast';
+import { formatDisplayDate } from '../utils/dateRange';
+import { patientsListUrl } from '../utils/routes';
 import { unitAccentColor } from '../utils/unitColor';
 
-function patientQuery(unitId: string, shift: string, status: string, month: string): string {
-  return `/api/patients?unit=${unitId}&shift=${encodeURIComponent(shift)}&status=${status}&month=${month}`;
+function patientQuery(unitId: string, shift: string, status: string, date: string): string {
+  return `/api/patients?unit=${unitId}&shift=${encodeURIComponent(shift)}&status=${status}&date=${date}`;
+}
+
+function resolveListDate(searchParams: URLSearchParams, shift: string): string {
+  const dateParam = searchParams.get('date');
+  if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) return dateParam;
+  const monthParam = searchParams.get('month');
+  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) return dateFromMonthParam(monthParam, shift);
+  return todayInClinic();
 }
 
 function isNotesComplete(p: PatientWithProgress): boolean {
-  return p.comprehensiveCount >= MONTHLY_NOTE_TARGET && p.basicCount >= WEEKLY_NOTE_TARGET;
+  return (
+    p.comprehensiveCount >= MONTHLY_NOTE_TARGET &&
+    p.basicCount >= (p.weeklyTarget ?? WEEKLY_NOTE_TARGET)
+  );
 }
 
 function computeAge(dob: string): number | null {
@@ -38,7 +57,7 @@ function stickyPreview(note: string, max = 48): string | null {
 }
 
 function formatLastVisit(date: string | null): string {
-  if (!date) return 'No visits this month';
+  if (!date) return 'No visits yet';
   const parsed = new Date(`${date}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return `Last visit ${date}`;
   return `Last visit ${parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
@@ -47,16 +66,6 @@ function formatLastVisit(date: string | null): string {
 function lastNoteLabel(type: NoteType | null): string | null {
   if (!type) return null;
   return type === 'comprehensive' ? 'Last: Comprehensive' : 'Last: Basic';
-}
-
-function listUrlFromFilters(unitId: string, shift: string, status: string, month: string, msg?: string): string {
-  const params = new URLSearchParams();
-  if (unitId) params.set('unit', unitId);
-  params.set('shift', shift);
-  params.set('status', status);
-  params.set('month', month);
-  if (msg) params.set('msg', msg);
-  return `/?${params.toString()}`;
 }
 
 export function MainPage() {
@@ -69,10 +78,9 @@ export function MainPage() {
   const shift =
     shiftParam && SHIFTS.includes(shiftParam as (typeof SHIFTS)[number]) ? shiftParam : SHIFTS[0];
   const status = searchParams.get('status') ?? 'active';
-  const monthParam = searchParams.get('month');
-  const month =
-    monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : currentMonthInClinic();
+  const date = resolveListDate(searchParams, shift);
   const listMessage = searchParams.get('msg');
+  const month = monthFromDate(date);
 
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -84,27 +92,54 @@ export function MainPage() {
   const query = path.includes('?') ? path.split('?')[1] : '';
 
   useEffect(() => {
-    if (pathname !== '/') return;
+    if (pathname !== '/patients') return;
+    const hasDate = searchParams.get('date');
+    const legacyMonth = searchParams.get('month');
+    if (!hasDate && legacyMonth) {
+      navigate(
+        patientsListUrl({
+          unitId: unitId || undefined,
+          shift,
+          status,
+          date: dateFromMonthParam(legacyMonth, shift),
+        }),
+        { replace: true }
+      );
+      return;
+    }
     if (query) return;
-    navigate(listUrlFromFilters('', SHIFTS[0], 'active', currentMonthInClinic()), { replace: true });
-  }, [pathname, query, navigate]);
+    navigate(
+      patientsListUrl({ shift: SHIFTS[0], status: 'active', date: todayInClinic() }),
+      { replace: true }
+    );
+  }, [pathname, query, navigate, searchParams, unitId, shift, status]);
 
   function updateFilters(
-    next: Partial<{ unitId: string; shift: string; status: string; month: string }>
+    next: Partial<{ unitId: string; shift: string; status: string; date: string }>
   ) {
     navigate(
-      listUrlFromFilters(
-        next.unitId ?? unitId,
-        next.shift ?? shift,
-        next.status ?? status,
-        next.month ?? month
-      ),
+      patientsListUrl({
+        unitId: next.unitId ?? unitId,
+        shift: next.shift ?? shift,
+        status: next.status ?? status,
+        date: next.date ?? date,
+      }),
       { replace: true }
     );
   }
 
-  const patientsPath = unitId && shift ? patientQuery(unitId, shift, status, month) : null;
-  const { data, loading, reload } = useFetch<{ patients: PatientWithProgress[] }>(patientsPath);
+  const patientsPath = unitId && shift ? patientQuery(unitId, shift, status, date) : null;
+  const { data, loading, reload } = useFetch<{
+    patients: PatientWithProgress[];
+    shiftMatchesDay?: boolean;
+    date?: string;
+  }>(patientsPath);
+
+  const shiftMatchesDay = data?.shiftMatchesDay !== false;
+  const nearestDates = useMemo(
+    () => (shift ? nearestShiftDates(shift, date) : { previous: null, next: null }),
+    [shift, date]
+  );
 
   const patients = useMemo(() => {
     const list = data?.patients ?? [];
@@ -132,7 +167,7 @@ export function MainPage() {
 
   function openPatient(patientId: number, rounds = false) {
     const params = new URLSearchParams({
-      month,
+      date,
       unit: unitId,
       shift,
     });
@@ -164,6 +199,7 @@ export function MainPage() {
           dob,
           unitId: Number(unitId),
           shift,
+          admissionDate: date,
         }),
       });
       setShowAdd(false);
@@ -223,15 +259,12 @@ export function MainPage() {
               <option value="all">All</option>
             </select>
           </div>
-          <div className="field">
-            <label htmlFor="month">Month</label>
-            <input
-              id="month"
-              type="month"
-              value={month}
-              onChange={(e) => updateFilters({ month: e.target.value })}
-            />
-          </div>
+          <DayPicker
+            id="roster-date"
+            value={date}
+            max={todayInClinic()}
+            onChange={(nextDate) => updateFilters({ date: nextDate })}
+          />
         </div>
         <div className="field">
           <label htmlFor="search">Search</label>
@@ -297,16 +330,45 @@ export function MainPage() {
           <div className="empty-state">
             <p className="empty-state-title">Choose a unit to begin</p>
             <p className="empty-state-hint meta">
-              Select a dialysis unit above to load patients for {month}.
+              Select a dialysis unit above to load patients for {formatDisplayDate(date)}.
             </p>
           </div>
         ) : loading ? (
           <PatientListSkeleton />
+        ) : !shiftMatchesDay ? (
+          <div className="empty-state">
+            <p className="empty-state-title">No dialysis on this day</p>
+            <p className="empty-state-hint meta">
+              {shift} patients dialyze on {shiftExpectedDays(shift)}. Pick a matching date or
+              change shift.
+            </p>
+            <div className="row shift-date-suggestions">
+              {nearestDates.previous && (
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => updateFilters({ date: nearestDates.previous! })}
+                >
+                  ← {formatDisplayDate(nearestDates.previous)}
+                </button>
+              )}
+              {nearestDates.next && (
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => updateFilters({ date: nearestDates.next! })}
+                >
+                  {formatDisplayDate(nearestDates.next)} →
+                </button>
+              )}
+            </div>
+          </div>
         ) : patients.length === 0 ? (
           <div className="empty-state">
-            <p className="empty-state-title">No patients found</p>
+            <p className="empty-state-title">No patients on roster</p>
             <p className="empty-state-hint meta">
-              Try a different shift or status filter, or add a patient to this unit.
+              No one was admitted on or before {formatDisplayDate(date)} for this unit and shift,
+              or try a different status filter.
             </p>
           </div>
         ) : (
@@ -319,7 +381,7 @@ export function MainPage() {
                 : ''}
             </p>
             <p className="meta list-header-meta">
-              {month} · {shift} · sorted incomplete first
+              {formatDisplayDate(date)} · {shift} · sorted incomplete first
             </p>
             <ul className="patient-list">
               {patients.map((patient) => {
@@ -346,18 +408,14 @@ export function MainPage() {
                         <div className="patient-name">
                           {patient.lastName}, {patient.firstName}
                         </div>
-                        {complete && <span className="badge badge-success">Complete</span>}
-                        {!complete && patient.comprehensiveCount < MONTHLY_NOTE_TARGET && (
-                          <span className="badge badge-warning">Needs Comp</span>
-                        )}
-                        {patient.unattestedVisitCount > 0 && (
-                          <span className="badge badge-warning">
-                            {patient.unattestedVisitCount} sign-off
-                          </span>
-                        )}
-                        {patient.status !== 'active' && (
-                          <span className="badge">{patient.status}</span>
-                        )}
+                        <PatientStatusBadges
+                          complete={complete}
+                          comprehensiveCount={patient.comprehensiveCount}
+                          basicCount={patient.basicCount}
+                          weeklyTarget={patient.weeklyTarget}
+                          unattestedVisitCount={patient.unattestedVisitCount}
+                          status={patient.status}
+                        />
                       </div>
                       <div className="meta">
                         DOB {patient.dob}
@@ -374,9 +432,9 @@ export function MainPage() {
                           {patient.comprehensiveCount}/{MONTHLY_NOTE_TARGET} Comp
                         </span>
                         <span
-                          className={`note-badge${patient.basicCount >= WEEKLY_NOTE_TARGET ? ' note-badge--done' : ''}`}
+                          className={`note-badge${patient.basicCount >= patient.weeklyTarget ? ' note-badge--done' : ''}`}
                         >
-                          {patient.basicCount}/{WEEKLY_NOTE_TARGET} Basic
+                          {patient.basicCount}/{patient.weeklyTarget} Basic
                         </span>
                         {patient.visitLoggedCount > 0 && (
                           <span className="note-badge">{patient.visitLoggedCount} logged</span>

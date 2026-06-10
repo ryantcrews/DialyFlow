@@ -6,22 +6,28 @@ import { StatusChip } from './StatusChip';
 export function AttestDayBoard({
   board,
   busy,
+  filteredEmpty,
   onVisitModeChange,
   onSignVisit,
   onSignAllInShift,
 }: {
   board: AttestDayBoard;
   busy: boolean;
+  filteredEmpty?: boolean;
   onVisitModeChange: (bucket: AttestShiftBucket, mode: VisitMode) => void;
   onSignVisit: (visitId: number) => void;
   onSignAllInShift: (bucket: AttestShiftBucket) => void;
 }) {
   if (board.units.length === 0) {
     return (
-      <div className="empty-state">
-        <p className="empty-state-title">All caught up for this day</p>
+      <div className="empty-state card">
+        <p className="empty-state-title">
+          {filteredEmpty ? 'No matching visits' : 'No visits for this day'}
+        </p>
         <p className="empty-state-hint meta">
-          No shift buckets need sign-off on this date. Use the date picker to review prior days.
+          {filteredEmpty
+            ? 'Try clearing the location or shift filter, or choose another date.'
+            : 'No notes were logged on this date. Choose another day or check back after rounds.'}
         </p>
       </div>
     );
@@ -41,16 +47,27 @@ export function AttestDayBoard({
           <div className="attest-shift-buckets">
             {unit.shifts.map((bucket) => {
               const pending = bucket.visits.filter((v) => !v.attestedAt);
+              const visitModeLocked =
+                bucket.visits.length === 1 && bucket.pendingCount === 0;
+              const displayVisitMode =
+                visitModeLocked && bucket.visits[0]?.visitMode
+                  ? bucket.visits[0].visitMode
+                  : bucket.visitMode;
               return (
-                <div
-                  key={`${bucket.unitId}-${bucket.shift}`}
-                  className="attest-shift-bucket"
-                >
+                <div key={`${bucket.unitId}-${bucket.shift}`} className="attest-shift-bucket">
                   <header className="attest-shift-bucket-header">
                     <div className="attest-shift-bucket-title-row">
                       <h4 className="attest-shift-bucket-title">{bucket.shift}</h4>
                       <div className="context-summary">
-                        <StatusChip variant="pending" label={`${bucket.pendingCount} pending`} />
+                        {bucket.pendingCount > 0 && (
+                          <StatusChip variant="pending" label={`${bucket.pendingCount} pending`} />
+                        )}
+                        {bucket.totalCount - bucket.pendingCount > 0 && (
+                          <StatusChip
+                            variant="success"
+                            label={`${bucket.totalCount - bucket.pendingCount} completed`}
+                          />
+                        )}
                         <StatusChip variant="neutral" label={`${bucket.totalCount} seen`} />
                       </div>
                     </div>
@@ -63,30 +80,42 @@ export function AttestDayBoard({
                             key={mode}
                             type="button"
                             role="tab"
-                            aria-selected={bucket.visitMode === mode}
-                            className={`visit-mode-tab${bucket.visitMode === mode ? ' visit-mode-tab--active' : ''}`}
-                            disabled={busy}
+                            aria-selected={displayVisitMode === mode}
+                            className={`visit-mode-tab${displayVisitMode === mode ? ' visit-mode-tab--active' : ''}`}
+                            disabled={busy || visitModeLocked}
+                            title={
+                              visitModeLocked
+                                ? 'Visit type is locked after sign-off'
+                                : undefined
+                            }
                             onClick={() => onVisitModeChange(bucket, mode)}
                           >
                             {VISIT_MODE_LABELS[mode]}
                           </button>
                         ))}
                       </div>
-                      {!bucket.visitMode && (
-                        <p className="meta attest-mode-hint">
-                          Select telemed or in person for this shift.
-                        </p>
-                      )}
-                      {pending.length > 1 && (
-                        <button
-                          type="button"
-                          className="btn btn-primary attest-shift-sign-all"
-                          disabled={busy}
-                          onClick={() => onSignAllInShift(bucket)}
-                        >
-                          Sign all in {bucket.shift} ({pending.length})
-                        </button>
-                      )}
+                      <p className="meta attest-mode-hint">
+                        {!displayVisitMode && !visitModeLocked
+                          ? 'Select telemed or in person for this shift.'
+                          : '\u00a0'}
+                      </p>
+                      <div className="attest-shift-sign-all-slot">
+                        {pending.length > 1 ? (
+                          <button
+                            type="button"
+                            className="btn btn-primary attest-shift-sign-all"
+                            disabled={busy || !bucket.visitMode}
+                            title={
+                              !bucket.visitMode
+                                ? 'Select telemed or in person for this shift first'
+                                : undefined
+                            }
+                            onClick={() => onSignAllInShift(bucket)}
+                          >
+                            Sign all in {bucket.shift} ({pending.length})
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   </header>
 
@@ -95,7 +124,7 @@ export function AttestDayBoard({
                       <li key={visit.visitId}>
                         <AttestVisitCard
                           visit={visit}
-                          visitMode={bucket.visitMode}
+                          sessionVisitMode={bucket.visitMode}
                           busy={busy}
                           onSign={onSignVisit}
                         />

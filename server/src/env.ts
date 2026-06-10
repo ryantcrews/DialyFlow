@@ -4,6 +4,7 @@ export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   ENVIRONMENT: string;
+  BOOTSTRAP_TOKEN?: string;
 }
 
 export interface AuthUser {
